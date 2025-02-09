@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+- name: 💡 Ideas & Discussion
+  url: https://github.com/cheginit/tiny-retriever/discussions/categories/ideas
+  about: Do you have an idea how to improve tiny-retriever? Feel free to post it to the discussion forum that allows voting for other users.
+- name: ⁉️ Help & Support
+  url: https://github.com/cheginit/tiny-retriever/discussions/categories/q-a
+  about: Need help with installation or usage of tiny-retriever? Please use the discussion forum.
