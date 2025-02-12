@@ -1,44 +1,16 @@
 # fetch_overloads.py
-from typing import overload, Literal, TYPE_CHECKING, TypeVar, Any, Protocol
+from typing import overload, Literal, TYPE_CHECKING, TypeVar, Any
 from collections.abc import Iterable
 
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import Sequence
-    from aiohttp import ClientResponse
     from aiohttp.typedefs import StrOrURL
 
     T = TypeVar("T")
     ResponseT = TypeVar("ResponseT", str, bytes, dict[str, Any])
     ReturnType = Literal["text", "json", "binary"]
     RequestMethod = Literal["get", "post"]
-
-
-class ResponseHandler(Protocol):
-    async def __call__(self, response: ClientResponse) -> ResponseT: ...
-
-@overload
-async def _batch_request(
-    urls: list[StrOrURL],
-    method: RequestMethod,
-    response_handler: ResponseHandler,
-    limit_per_host: int,
-    timeout: int,
-    request_kwargs: list[dict[str, Any]] | None,
-    raise_status: Literal[False],
-) -> list[ResponseT | None]: ...
-
-
-@overload
-async def _batch_request(
-    urls: list[StrOrURL],
-    method: RequestMethod,
-    response_handler: ResponseHandler,
-    limit_per_host: int,
-    timeout: int,
-    request_kwargs: list[dict[str, Any]] | None,
-    raise_status: Literal[True],
-) -> list[ResponseT]: ...
 
 def download(
     urls: StrOrURL | Sequence[StrOrURL],
