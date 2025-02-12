@@ -15,14 +15,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Add support for passing single URL/key to both `fetch` and `download` functions.
-    This makes using the function easier when there's just one query to be made.
-    The result is returned as a single item too.
+- Add support for passing single URL/key to both `fetch` and `download` functions. This
+    makes using the function easier when there's just one query to be made. The result
+    is returned as a single item too.
 
 ### Changed
 
-- Check the validity of the input `request_kwargs` in `fetch` function based on
-    the acceptable args for `aiohttp.ClientSession.request` method.
+- Check the validity of the input `request_kwargs` in `fetch` function based on the
+    acceptable args for `aiohttp.ClientSession.request` method.
 
 ## [0.1.0] - 2025-02-11
 
