@@ -46,6 +46,9 @@ def test_binary():
     r = fetch(urls, "binary", request_kwargs=kwds)
     assert sys.getsizeof(r[0]) == 986161
 
+    r = fetch(urls[0], "binary", request_kwargs=kwds[0])
+    assert sys.getsizeof(r) == 986161
+
 
 def test_json():
     urls = ["https://api.water.usgs.gov/nldi/linked-data/comid/position"]
@@ -82,6 +85,8 @@ def test_stream():
         file = Path(temp) / "test.csv"
         download([url], [file])
         assert file.stat().st_size == 512789
+        download(url, file)
+        assert file.stat().st_size == 512789
 
 
 def test_stream_chunked():
@@ -100,3 +105,12 @@ def test_ordered_return():
     )
     resp = fetch(urls, "text", request_kwargs=kwds)
     assert [r.split("\n")[-2].split("\t")[1] for r in resp] == stations
+
+
+def test_fetch_invalid_response():
+    """Test that fetch raises InputTypeError when request_kwargs contains non-dict elements."""
+    urls = ["http://wrong.url/1"]
+    kwargs = [{"params": "value"}]
+
+    resp = fetch(urls, "text", request_kwargs=kwargs, raise_status=False)
+    assert resp[0] is None

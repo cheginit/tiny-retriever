@@ -49,6 +49,15 @@ def test_fetch_invalid_request_kwargs_type():
         fetch(urls, "text", request_kwargs=kwargs)
 
 
+def test_fetch_invalid_request_kwargs_keys():
+    """Test that fetch raises InputTypeError when request_kwargs contains non-dict elements."""
+    urls = ["http://wrong.url/1"]
+    kwargs = [{"invalid": "value"}]
+
+    with pytest.raises(InputValueError, match="(invalid)"):
+        fetch(urls, "text", request_kwargs=kwargs)
+
+
 def test_fetch_invalid_return_type():
     """Test that fetch raises InputValueError for invalid return_type."""
     with pytest.raises(InputValueError, match="Given return_type"):
@@ -67,3 +76,12 @@ def test_service_error():
 
     with pytest.raises(ServiceError):
         download(["http://wrong.url/file.txt"], ["downloaded.txt"])
+
+
+def test_download_invalid_length():
+    """Test that fetch raises InputTypeError when request_kwargs length doesn't match urls."""
+    urls = ["http://wrong.url/1", "http://wrong.url/2"]
+    files = ["file1.txt"]
+
+    with pytest.raises(InputTypeError, match="lists of the same size"):
+        download(urls, files)
