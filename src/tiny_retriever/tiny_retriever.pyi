@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def download(
     urls: StrOrURL | Sequence[StrOrURL],
-    file_paths: Sequence[Path | str],
+    file_paths: Path | str | Sequence[Path | str],
     *,
     chunk_size: int = ...,
     limit_per_host: int = ...,
