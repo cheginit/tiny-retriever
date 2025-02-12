@@ -78,16 +78,18 @@ def test_text_post():
 
 def test_stream():
     url = "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_500KB_CSV-1.csv"
-    with tempfile.NamedTemporaryFile(dir=".") as temp:
-        download([url], [temp.name])
-        assert Path(temp.name).stat().st_size == 512789
+    with tempfile.TemporaryDirectory(dir=".") as temp:
+        file = Path(temp) / "test.csv"
+        download([url], [file])
+        assert file.stat().st_size == 512789
 
 
 def test_stream_chunked():
     url = "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_500KB_CSV-1.csv"
-    with tempfile.NamedTemporaryFile(dir=".") as temp:
-        download([url], [temp.name], chunk_size=5000)
-        assert Path(temp.name).stat().st_size == 512789
+    with tempfile.TemporaryDirectory(dir=".") as temp:
+        file = Path(temp) / "test.csv"
+        download([url], [file], chunk_size=5000)
+        assert file.stat().st_size == 512789
 
 
 def test_ordered_return():
