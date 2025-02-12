@@ -64,6 +64,9 @@ Alternatively, you can use `conda` or `mamba`.
 
 ## Quick Start Guide
 
+Please refer to the [documentation](https://tiny_retriever.readthedocs.io) for detailed
+usage instructions and more elaborate examples.
+
 ### Downloading Files
 
 ```python
