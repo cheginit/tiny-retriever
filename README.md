@@ -4,6 +4,7 @@
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/tiny-retriever.svg)](https://anaconda.org/conda-forge/tiny-retriever)
 [![CodeCov](https://codecov.io/gh/cheginit/tiny-retriever/branch/main/graph/badge.svg)](https://codecov.io/gh/cheginit/tiny-retriever)
 [![Python Versions](https://img.shields.io/pypi/pyversions/tiny-retriever.svg)](https://pypi.python.org/pypi/tiny-retriever)
+
 [![Downloads](https://static.pepy.tech/badge/tiny-retriever)](https://pepy.tech/project/tiny-retriever)
 [![CodeFactor](https://www.codefactor.io/repository/github/cheginit/tiny-retriever/badge)](https://www.codefactor.io/repository/github/cheginit/tiny-retriever)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
