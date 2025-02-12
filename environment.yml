@@ -4,5 +4,9 @@ channels:
 - nodefaults
 dependencies:
 - python >=3.9
-- tiny_retriever
+- tiny-retriever
 # notebooks deps
+- rioxarray
+- geopandas
+- matplotlib-base
+
