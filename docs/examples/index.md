@@ -4,13 +4,15 @@ The example notebooks have several dependencies. You can install all the depende
 using `micromamba` (or `conda` or `mamba`):
 
 ```bash
-micormamba create -n tiny_retriever tiny_retriever ipykernel ipywidgets
+micormamba create -n tiny_retriever tiny_retriever ipykernel ipywidgets rioxarray geopandas matplotlib
 ```
 
-This will create a new environment called `tiny_retriever` with all the required packages.
+This will create a new environment called `tiny_retriever` with all the required
+packages.
 
 <div class="grid cards" markdown>
 
-- [![Example](images/image.png){ loading=lazy }](example.ipynb "Example") **Example**
+- [![Hydrology Data](images/image.png){ loading=lazy }](hydrodata.ipynb "Hydrology Data")
+    **Hydrology Data**
 
 </div>
