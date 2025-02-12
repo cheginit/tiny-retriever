@@ -15,13 +15,19 @@ from typing import (
     Any,
     Literal,
     Protocol,
-    TypeAlias,
     TypeVar,
+    cast,
     overload,
 )
 
 import aiofiles
-from aiohttp import ClientResponseError, ClientSession, ClientTimeout, TCPConnector
+from aiohttp import (
+    ClientConnectorDNSError,
+    ClientResponseError,
+    ClientSession,
+    ClientTimeout,
+    TCPConnector,
+)
 from multidict import MultiDict
 from yarl import URL
 
@@ -42,10 +48,9 @@ if TYPE_CHECKING:
     from aiohttp import ClientResponse
     from aiohttp.typedefs import StrOrURL
 
+    from tiny_retriever.tiny_retriever import RequestMethod, ResponseT, ReturnType
+
     T = TypeVar("T")
-    ResponseT = TypeVar("ResponseT", str, bytes, dict[str, Any])
-    ReturnType: TypeAlias = Literal["text", "json", "binary"]
-    RequestMethod: TypeAlias = Literal["get", "post"]
 
 __all__ = ["download", "fetch", "unique_filename"]
 
@@ -94,19 +99,21 @@ def _run_in_event_loop(coro: Coroutine[Any, Any, T]) -> T:
 
 
 async def _stream_file(
-    session: ClientSession, url: StrOrURL, filepath: Path, chunk_size: int
+    session: ClientSession, url: StrOrURL, filepath: Path, chunk_size: int, raise_status: bool
 ) -> None:
     """Stream the response to a file, skipping if already downloaded."""
-    async with session.get(url) as response:
-        if response.status != 200:
-            raise ServiceError(await response.text(), str(response.url))
-        remote_size = int(response.headers.get("Content-Length", -1))
-        if filepath.exists() and filepath.stat().st_size == remote_size:
-            return
+    try:
+        async with session.get(url) as response:
+            remote_size = int(response.headers.get("Content-Length", -1))
+            if filepath.exists() and filepath.stat().st_size == remote_size:
+                return
 
-        async with aiofiles.open(filepath, "wb") as file:
-            async for chunk in response.content.iter_chunked(chunk_size):
-                await file.write(chunk)
+            async with aiofiles.open(filepath, "wb") as file:
+                async for chunk in response.content.iter_chunked(chunk_size):
+                    await file.write(chunk)
+    except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
+        if raise_status:
+            raise ServiceError(str(ex), str(url)) from ex
 
 
 async def _download_session(
@@ -124,16 +131,17 @@ async def _download_session(
         loop=_loop_handler.loop,
         json_serialize=_json_serialize,
         trust_env=True,
+        raise_for_status=True,
     ) as session:
         tasks = [
-            asyncio.create_task(_stream_file(session, url, filepath, chunk_size))
+            asyncio.create_task(_stream_file(session, url, filepath, chunk_size, raise_status))
             for url, filepath in zip(urls, files)
         ]
-        await asyncio.gather(*tasks, return_exceptions=not raise_status)
+        await asyncio.gather(*tasks)
 
 
 def download(
-    urls: Sequence[StrOrURL],
+    urls: StrOrURL | Sequence[StrOrURL],
     file_paths: Sequence[Path | str],
     *,
     chunk_size: int = CHUNK_SIZE,
@@ -167,6 +175,7 @@ def download(
         If the request fails or response cannot be processed.
     """
     file_paths = [Path(filepath) for filepath in file_paths]
+    urls = [urls] if isinstance(urls, (str, URL)) else list(urls)
     if len(urls) != len(file_paths):
         raise InputTypeError("urls/files_paths", "lists of the same size")
 
@@ -246,12 +255,12 @@ async def _make_request(
     **kwargs: Any,
 ) -> ResponseT | None:
     """Make a single HTTP request with the specified method and handle the response."""
-    async with getattr(session, method)(url, **kwargs) as response:
-        try:
+    try:
+        async with session.request(method, url, **kwargs) as response:
             return await response_handler(response)
-        except (ClientResponseError, UnicodeDecodeError, ValueError) as ex:
-            if raise_status:
-                raise ServiceError(await response.text(), str(response.url)) from ex
+    except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
+        if raise_status:
+            raise ServiceError(str(ex), str(url)) from ex
         return None
 
 
@@ -295,114 +304,41 @@ async def _batch_request(
         loop=_loop_handler.loop,
         json_serialize=_json_serialize,
         trust_env=True,
+        raise_for_status=True,
         fallback_charset_resolver=lambda r, _: r.charset or "latin1",
     ) as session:
         if request_kwargs is None:
-            request_kwargs = [{} for _ in urls]
-        elif len(request_kwargs) != len(urls):
-            raise InputValueError(
-                "request_kwargs",
-                f"Length of request_kwargs ({len(request_kwargs)}) must match length of urls ({len(urls)})",
-            )
-
-        tasks = [
-            asyncio.create_task(
-                _make_request(session, method, url, response_handler, raise_status, **kwargs)
-            )
-            for url, kwargs in zip(urls, request_kwargs)
-        ]
+            tasks = [
+                asyncio.create_task(
+                    _make_request(session, method, url, response_handler, raise_status)
+                )
+                for url in urls
+            ]
+        else:
+            tasks = [
+                asyncio.create_task(
+                    _make_request(session, method, url, response_handler, raise_status, **kwargs)
+                )
+                for url, kwargs in zip(urls, request_kwargs)
+            ]
         return await asyncio.gather(*tasks)
 
 
-@overload
 def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["text"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[False],
-) -> list[str | None]: ...
-
-
-@overload
-def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["text"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[True] = True,
-) -> list[str]: ...
-
-
-@overload
-def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["json"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[False],
-) -> list[dict[str, Any] | None]: ...
-
-
-@overload
-def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["json"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[True] = True,
-) -> list[dict[str, Any]]: ...
-
-
-@overload
-def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["binary"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[False],
-) -> list[bytes | None]: ...
-
-
-@overload
-def fetch(
-    urls: Iterable[StrOrURL],
-    return_type: Literal["binary"],
-    *,
-    request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
-    limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
-    raise_status: Literal[True] = True,
-) -> list[bytes]: ...
-
-
-def fetch(
-    urls: Iterable[StrOrURL],
+    urls: StrOrURL | Iterable[StrOrURL],
     return_type: ReturnType,
     *,
     request_method: RequestMethod = "get",
-    request_kwargs: Iterable[dict[str, Any]] | None = None,
+    request_kwargs: dict[str, Any] | Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = MAX_HOSTS,
     timeout: int = TIMEOUT,
     raise_status: bool = True,
 ) -> (
-    list[str]
+    str
+    | None
+    | bytes
+    | dict[str, Any]
+    | list[str]
     | list[str | None]
     | list[bytes]
     | list[bytes | None]
@@ -413,14 +349,14 @@ def fetch(
 
     Parameters
     ----------
-    urls : list of str
-        List of URLs to make requests to
+    urls : str, list of str
+        URL(s) to fetch data from.
     return_type : {"text", "json", "binary"}
         Desired response format, which can be ``text``, ``json``, or ``binary``.
     request_method : {"get", "post"}, optional
         HTTP method to use, by default ``get``.
-    request_kwargs : list of dict, optional
-        List of keyword arguments for each request, by default ``None``.
+    request_kwargs : dict, list of dict, optional
+        Keyword argument(s) for (each) request, by default ``None``.
         If provided, must be the same length as ``urls``.
     limit_per_host : int, optional
         Maximum number of concurrent connections per host, by default 4
@@ -439,15 +375,16 @@ def fetch(
     Raises
     ------
     InputTypeError
-        If urls is not an Iterable or Sequence
+        If urls is not a str or iterable
         If request_kwargs is provided and its length doesn't match urls
-        If request_kwargs is provided and is not a list of dict
+        If request_kwargs is provided and is not a dict or list of dict
     InputValueError
         If request_method is not ``get`` or ``post``
         If return_type is not ``text``, ``json``, or ``binary``
     ServiceError
-        If the request fails or response cannot be processed
+        If the request fails or response cannot be processed when ``raise_status=True``
     """
+    urls = [urls] if isinstance(urls, (str, URL)) else urls
     if not isinstance(urls, (Iterable, Sequence)):
         raise InputTypeError("urls", "Iterable or Sequence")
 
@@ -467,12 +404,18 @@ def fetch(
     if any(not isinstance(url, str) for url in url_list):
         raise InputTypeError("urls", "list of str")
 
-    kwargs_list = list(request_kwargs) if request_kwargs is not None else None
-    if kwargs_list is not None:
+    if request_kwargs is None:
+        kwargs_list = None
+    elif isinstance(request_kwargs, dict) and all(isinstance(k, str) for k in request_kwargs):
+        kwargs_list = cast("list[dict[str, Any]]", [request_kwargs])
+    elif isinstance(request_kwargs, Iterable) and all(isinstance(k, dict) for k in request_kwargs):
+        kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))
         if len(kwargs_list) != len(url_list):
             raise InputTypeError("request_kwargs", "list of the same length as urls")
         if any(not isinstance(kwargs, dict) for kwargs in kwargs_list):
             raise InputTypeError("request_kwargs", "list of dict")
+    else:
+        raise InputTypeError("request_kwargs", "list of dict, dict, or None")
 
     if raise_status:
         return _run_in_event_loop(
