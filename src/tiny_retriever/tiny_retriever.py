@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from collections.abc import Iterable, Sequence
+from inspect import signature
 from pathlib import Path
 from threading import Event, Thread
 from typing import (
@@ -142,7 +143,7 @@ async def _download_session(
 
 def download(
     urls: StrOrURL | Sequence[StrOrURL],
-    file_paths: Sequence[Path | str],
+    file_paths: Path | str | Sequence[Path | str],
     *,
     chunk_size: int = CHUNK_SIZE,
     limit_per_host: int = MAX_HOSTS,
@@ -174,6 +175,7 @@ def download(
     ServiceError
         If the request fails or response cannot be processed.
     """
+    file_paths = [file_paths] if isinstance(file_paths, (str, Path)) else list(file_paths)
     file_paths = [Path(filepath) for filepath in file_paths]
     urls = [urls] if isinstance(urls, (str, URL)) else list(urls)
     if len(urls) != len(file_paths):
@@ -345,8 +347,6 @@ def _check_url_kwargs(
         kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))
         if len(kwargs_list) != len(url_list):
             raise InputTypeError("request_kwargs", "list of the same length as urls")
-        if any(not isinstance(kwargs, dict) for kwargs in kwargs_list):
-            raise InputTypeError("request_kwargs", "list of dict")
     else:
         raise InputTypeError("request_kwargs", "list of dict, dict, or None")
     return url_list, kwargs_list
@@ -425,6 +425,15 @@ def fetch(
         raise InputValueError("return_type", tuple(handlers))
 
     url_list, kwargs_list = _check_url_kwargs(urls, request_kwargs)
+
+    if kwargs_list is not None:
+        # Check if the request kwargs are valid
+        valid_kwds = signature(ClientSession._request)  # pyright: ignore[reportPrivateUsage]
+        not_found = [p for kwds in kwargs_list for p in kwds if p not in valid_kwds.parameters]
+        if not_found:
+            invalids = f"request_kwds ({', '.join(not_found)})"
+            raise InputValueError(invalids, list(valid_kwds.parameters))
+
     if raise_status:
         resp = _run_in_event_loop(
             _batch_request(
