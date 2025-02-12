@@ -12,7 +12,7 @@ packages.
 
 <div class="grid cards" markdown>
 
-- [![Hydrology Data](images/image.png){ loading=lazy }](hydrodata.ipynb "Hydrology Data")
+- [![Hydrology Data](images/dem.png){ loading=lazy }](hydrodata.ipynb "Hydrology Data")
     **Hydrology Data**
 
 </div>
