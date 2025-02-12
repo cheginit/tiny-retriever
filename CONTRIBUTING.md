@@ -36,9 +36,9 @@ experience for all involved. The community looks forward to your contributions. 
 > [Documentation](https://tiny_retriever.readthedocs.io/en/latest/).
 
 Before you ask a question, it is best to search for existing
-[Issues](https://github.com/cheginit/tiny-retriever/issues) that might help you. In case you
-have found a suitable issue and still need clarification, you can write your question in
-this issue. It is also advisable to search the internet for answers first.
+[Issues](https://github.com/cheginit/tiny-retriever/issues) that might help you. In case
+you have found a suitable issue and still need clarification, you can write your
+question in this issue. It is also advisable to search the internet for answers first.
 
 If you then still feel the need to ask a question and need clarification, we recommend
 the following:
@@ -72,8 +72,8 @@ us fix any potential bug as fast as possible.
 - Make sure that you are using the latest version.
 - Determine if your bug is really a bug and not an error on your side e.g. using
     incompatible environment components/versions (Make sure that you have read the
-    [documentation](https://tiny_retriever.readthedocs.io/en/latest/). If you are looking for
-    support, you might want to check [this section](#i-have-a-question)).
+    [documentation](https://tiny_retriever.readthedocs.io/en/latest/). If you are
+    looking for support, you might want to check [this section](#i-have-a-question)).
 - To see if other users have experienced (and potentially already solved) the same issue
     you are having, check if there is not already a bug report existing for your bug or
     error in the
@@ -100,9 +100,9 @@ us fix any potential bug as fast as possible.
 We use GitHub issues to track bugs and errors. If you run into an issue with the
 project:
 
-- Open an [Issue](https://github.com/cheginit/tiny-retriever/issues/new). (Since we can't be
-    sure at this point whether it is a bug or not, we ask you not to talk about a bug
-    yet and not to label the issue.)
+- Open an [Issue](https://github.com/cheginit/tiny-retriever/issues/new). (Since we
+    can't be sure at this point whether it is a bug or not, we ask you not to talk about
+    a bug yet and not to label the issue.)
 - Explain the behavior you would expect and the actual behavior.
 - Please provide as much context as possible and describe the *reproduction steps* that
     someone else can follow to recreate the issue on their own. This usually includes
@@ -133,8 +133,8 @@ suggestion and find related suggestions.
 #### Before Submitting an Enhancement
 
 - Make sure that you are using the latest version.
-- Read the [documentation](https://tiny_retriever.readthedocs.io/en/latest/) carefully and
-    find out if the functionality is already covered, maybe by an individual
+- Read the [documentation](https://tiny_retriever.readthedocs.io/en/latest/) carefully
+    and find out if the functionality is already covered, maybe by an individual
     configuration.
 - Perform a [search](https://github.com/cheginit/tiny-retriever/issues) to see if the
     enhancement has already been suggested. If it has, add a comment to the existing
@@ -158,9 +158,9 @@ Enhancement suggestions are tracked as
 - **Describe the current behavior** and **explain which behavior you expected to see
     instead** and why. At this point you can also tell which alternatives do not work
     for you.
-- **Explain why this enhancement would be useful** to most TinyRetriever users. You may also
-    want to point out the other projects that solved it better and which could serve as
-    inspiration.
+- **Explain why this enhancement would be useful** to most TinyRetriever users. You may
+    also want to point out the other projects that solved it better and which could
+    serve as inspiration.
 
 ### Your First Code Contribution
 
@@ -228,8 +228,8 @@ Ready to contribute? Here's how to set up TinyRetriever for local development.
 
 ### Improving The Documentation
 
-TinyRetriever could always use more documentation, whether as part of the official TinyRetriever
-docs, in docstrings, or even on the web in blog posts, articles, and such.
+TinyRetriever could always use more documentation, whether as part of the official
+TinyRetriever docs, in docstrings, or even on the web in blog posts, articles, and such.
 
 <!-- omit in toc -->
 
