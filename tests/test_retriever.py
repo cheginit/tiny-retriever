@@ -10,8 +10,8 @@ from tiny_retriever import download, fetch
 
 def test_encoding():
     url = "https://api.epa.gov/StreamCat/streams/variable_info"
-    resp = fetch([url], "text")
-    assert resp[0][:3] == "IND"
+    resp = fetch(url, "text")
+    assert resp[:3] == "IND"
 
 
 def test_binary():
