@@ -324,6 +324,34 @@ async def _batch_request(
         return await asyncio.gather(*tasks)
 
 
+def _check_url_kwargs(
+    urls: StrOrURL | Iterable[StrOrURL],
+    request_kwargs: dict[str, Any] | Iterable[dict[str, Any]] | None,
+) -> tuple[list[StrOrURL], list[dict[str, Any]] | None]:
+    """Check the input types for URLs and request_kwargs."""
+    urls = [urls] if isinstance(urls, (str, URL)) else urls
+    if not isinstance(urls, (Iterable, Sequence)):
+        raise InputTypeError("urls", "Iterable or Sequence")
+
+    url_list = list(urls)
+    if any(not isinstance(url, str) for url in url_list):
+        raise InputTypeError("urls", "list of str")
+
+    if request_kwargs is None:
+        kwargs_list = None
+    elif isinstance(request_kwargs, dict) and all(isinstance(k, str) for k in request_kwargs):
+        kwargs_list = cast("list[dict[str, Any]]", [request_kwargs])
+    elif isinstance(request_kwargs, Iterable) and all(isinstance(k, dict) for k in request_kwargs):
+        kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))
+        if len(kwargs_list) != len(url_list):
+            raise InputTypeError("request_kwargs", "list of the same length as urls")
+        if any(not isinstance(kwargs, dict) for kwargs in kwargs_list):
+            raise InputTypeError("request_kwargs", "list of dict")
+    else:
+        raise InputTypeError("request_kwargs", "list of dict, dict, or None")
+    return url_list, kwargs_list
+
+
 def fetch(
     urls: StrOrURL | Iterable[StrOrURL],
     return_type: ReturnType,
@@ -384,10 +412,6 @@ def fetch(
     ServiceError
         If the request fails or response cannot be processed when ``raise_status=True``
     """
-    urls = [urls] if isinstance(urls, (str, URL)) else urls
-    if not isinstance(urls, (Iterable, Sequence)):
-        raise InputTypeError("urls", "Iterable or Sequence")
-
     if request_method not in ("get", "post"):
         raise InputValueError("request_method", ("get", "post"))
 
@@ -400,25 +424,9 @@ def fetch(
     if return_type not in handlers:
         raise InputValueError("return_type", tuple(handlers))
 
-    url_list = list(urls)
-    if any(not isinstance(url, str) for url in url_list):
-        raise InputTypeError("urls", "list of str")
-
-    if request_kwargs is None:
-        kwargs_list = None
-    elif isinstance(request_kwargs, dict) and all(isinstance(k, str) for k in request_kwargs):
-        kwargs_list = cast("list[dict[str, Any]]", [request_kwargs])
-    elif isinstance(request_kwargs, Iterable) and all(isinstance(k, dict) for k in request_kwargs):
-        kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))
-        if len(kwargs_list) != len(url_list):
-            raise InputTypeError("request_kwargs", "list of the same length as urls")
-        if any(not isinstance(kwargs, dict) for kwargs in kwargs_list):
-            raise InputTypeError("request_kwargs", "list of dict")
-    else:
-        raise InputTypeError("request_kwargs", "list of dict, dict, or None")
-
+    url_list, kwargs_list = _check_url_kwargs(urls, request_kwargs)
     if raise_status:
-        return _run_in_event_loop(
+        resp = _run_in_event_loop(
             _batch_request(
                 url_list,
                 request_method,
@@ -429,14 +437,18 @@ def fetch(
                 raise_status=True,
             )
         )
-    return _run_in_event_loop(
-        _batch_request(
-            url_list,
-            request_method,
-            handlers[return_type],
-            limit_per_host=limit_per_host,
-            timeout=timeout,
-            request_kwargs=kwargs_list,
-            raise_status=False,
+    else:
+        resp = _run_in_event_loop(
+            _batch_request(
+                url_list,
+                request_method,
+                handlers[return_type],
+                limit_per_host=limit_per_host,
+                timeout=timeout,
+                request_kwargs=kwargs_list,
+                raise_status=False,
+            )
         )
-    )
+    if isinstance(urls, (str, URL)):
+        return resp[0]
+    return resp
