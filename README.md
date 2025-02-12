@@ -17,7 +17,7 @@ efficient. TinyRetriever is built on top of AIOHTTP and
 [AIOFiles](https://github.com/Tinche/aiofiles), which are popular asynchronous HTTP
 client and file management libraries for Python.
 
-📚 Full documentation is available [here](https://tiny_retriever.readthedocs.io).
+📚 Full documentation is available [here](https://tiny-retriever.readthedocs.io).
 
 ## Features
 
@@ -64,7 +64,7 @@ Alternatively, you can use `conda` or `mamba`.
 
 ## Quick Start Guide
 
-Please refer to the [documentation](https://tiny_retriever.readthedocs.io) for detailed
+Please refer to the [documentation](https://tiny-retriever.readthedocs.io) for detailed
 usage instructions and more elaborate examples.
 
 ### Downloading Files
@@ -153,7 +153,7 @@ TinyRetriever can be configured through environment variables:
 ## Contributing
 
 We welcome contributions! Please see the
-[contributing](https://tiny_retriever.readthedocs.io/en/latest/CONTRIBUTING/) section
+[contributing](https://tiny-retriever.readthedocs.io/en/latest/CONTRIBUTING/) section
 for guidelines and instructions.
 
 ## License

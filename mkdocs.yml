@@ -1,5 +1,5 @@
 site_name: TinyRetriever
-site_url: https://tiny_retriever.readthedocs.io/en/latest/
+site_url: https://tiny-retriever.readthedocs.io/en/latest/
 
 theme:
   name: material

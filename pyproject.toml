@@ -72,10 +72,10 @@ optional-dependencies.test = [
 optional-dependencies.typecheck = [
   "pyright",
 ]
-urls.Changelog = "https://tiny_retriever.readthedocs.io/en/latest/CHANGELOG"
-urls.CI = "https://github.com/cheginit/tiny_retriever/actions"
-urls.Homepage = "https://tiny_retriever.readthedocs.io"
-urls.Issues = "https://github.com/cheginit/tiny_retriever/issues"
+urls.Changelog = "https://tiny-retriever.readthedocs.io/en/latest/CHANGELOG"
+urls.CI = "https://github.com/cheginit/tiny-retriever/actions"
+urls.Homepage = "https://tiny-retriever.readthedocs.io"
+urls.Issues = "https://github.com/cheginit/tiny-retriever/issues"
 
 [tool.hatch.version]
 source = "vcs"
