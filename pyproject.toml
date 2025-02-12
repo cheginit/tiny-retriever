@@ -49,13 +49,14 @@ optional-dependencies.dev = [
   "pytest",
   "pytest-aiohttp",
   "pytest-asyncio",
+  "rioxarray",
   "shapely>=2",
 ]
 optional-dependencies.docs = [
   "black",
   "mkdocs",
   "mkdocs-jupyter",
-  "mkdocs-material",
+  "mkdocs-material[recommended,imaging]",
   "mkdocstrings-python",
 ]
 optional-dependencies.lint = [
@@ -172,6 +173,10 @@ lint.ignore = [
   "TRY003",
 ]
 
+lint.per-file-ignores."docs/examples/*.ipynb" = [
+  # print statement
+  "T201",
+]
 lint.per-file-ignores."tests/*.py" = [
   "D100",
   "D101",
@@ -275,6 +280,9 @@ platforms = [ "linux-64", "osx-64", "osx-arm64", "win-64" ]
 
 [tool.pixi.pypi-dependencies]
 tiny_retriever = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.dependencies]
+libgdal-core = "*"
 
 [tool.pixi.feature.py39.dependencies]
 python = "~=3.9.0"
