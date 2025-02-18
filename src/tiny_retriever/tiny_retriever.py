@@ -10,7 +10,7 @@ import os
 from collections.abc import Iterable, Sequence
 from inspect import signature
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -63,12 +63,31 @@ TIMEOUT = 5 * 60  # Timeout for requests in seconds (5 minutes)
 
 
 class _AsyncLoopThread(Thread):
-    """A dedicated thread for running asyncio event loop of ``aiohttp``."""
+    _instance = None
+    _lock = Lock()
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
         self.loop = asyncio.new_event_loop()
         self._running = Event()
+
+    @classmethod
+    def _cleanup(cls):
+        """Safe cleanup method for atexit."""
+        instance = cls._instance
+        if instance is not None:
+            instance.stop()
+
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton instance of AsyncLoopThread."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+                    cls._instance.start()
+                    atexit.register(cls._cleanup)
+        return cls._instance
 
     def run(self) -> None:
         """Run the event loop in this thread."""
@@ -88,15 +107,15 @@ class _AsyncLoopThread(Thread):
             self._running.wait()
 
 
-# Initialize the global event loop thread
-_loop_handler = _AsyncLoopThread()
-_loop_handler.start()
-atexit.register(lambda: _loop_handler.stop())
+def _get_loop_handler() -> _AsyncLoopThread:
+    """Get the global event loop thread handler, creating it if needed."""
+    return _AsyncLoopThread.get_instance()
 
 
 def _run_in_event_loop(coro: Coroutine[Any, Any, T]) -> T:
     """Run a coroutine in the dedicated asyncio event loop."""
-    return asyncio.run_coroutine_threadsafe(coro, _loop_handler.loop).result()
+    handler = _get_loop_handler()
+    return asyncio.run_coroutine_threadsafe(coro, handler.loop).result()
 
 
 async def _stream_file(
@@ -129,7 +148,7 @@ async def _download_session(
     async with ClientSession(
         connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
         timeout=ClientTimeout(timeout),
-        loop=_loop_handler.loop,
+        loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
         raise_for_status=True,
@@ -303,7 +322,7 @@ async def _batch_request(
     async with ClientSession(
         connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
         timeout=ClientTimeout(timeout),
-        loop=_loop_handler.loop,
+        loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
         raise_for_status=True,
