@@ -68,6 +68,7 @@ optional-dependencies.test = [
   "orjson",
   "pytest-cov",
   "pytest-sugar",
+  "shapely>=2",
 ]
 optional-dependencies.typecheck = [
   "pyright",
