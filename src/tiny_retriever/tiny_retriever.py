@@ -63,8 +63,9 @@ TIMEOUT = 5 * 60  # Timeout for requests in seconds (5 minutes)
 
 
 class _AsyncLoopThread(Thread):
-    _instance = None
+    _instance: _AsyncLoopThread | None = None
     _lock = Lock()
+    _cleanup_registered = False
 
     def __init__(self) -> None:
         super().__init__(daemon=True)
@@ -72,21 +73,27 @@ class _AsyncLoopThread(Thread):
         self._running = Event()
 
     @classmethod
-    def _cleanup(cls):
+    def _cleanup(cls) -> None:
         """Safe cleanup method for atexit."""
-        instance = cls._instance
-        if instance is not None:
-            instance.stop()
+        with cls._lock:
+            instance = cls._instance
+            if instance is not None:
+                instance.stop()
+                cls._instance = None
 
     @classmethod
-    def get_instance(cls):
+    def get_instance(cls) -> _AsyncLoopThread:
         """Get or create the singleton instance of AsyncLoopThread."""
-        if cls._instance is None:
+        if cls._instance is None or not cls._instance.is_alive():
             with cls._lock:
-                if cls._instance is None:
-                    cls._instance = cls()
-                    cls._instance.start()
-                    atexit.register(cls._cleanup)
+                # Check again in case another thread created instance
+                if cls._instance is None or not cls._instance.is_alive():
+                    instance = cls()
+                    instance.start()
+                    if not cls._cleanup_registered:
+                        atexit.register(cls._cleanup)
+                        cls._cleanup_registered = True
+                    cls._instance = instance
         return cls._instance
 
     def run(self) -> None:
@@ -104,7 +111,8 @@ class _AsyncLoopThread(Thread):
         """Stop the event loop thread."""
         if self._running.is_set():
             self.loop.call_soon_threadsafe(self.loop.stop)
-            self._running.wait()
+            self._running.wait()  # Wait for event to be cleared
+            self.join()  # Wait for thread to finish
 
 
 def _get_loop_handler() -> _AsyncLoopThread:
