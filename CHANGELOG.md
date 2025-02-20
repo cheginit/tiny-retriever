@@ -11,14 +11,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+## [0.1.3] - 2025-02-20
+
+### Changed
+
+- Change the timeout from session to request level. This allows for more granular control over
+    the timeout for each request.
+
 ## [0.1.2] - 2025-02-18
 
 ### Changed
 
-- More robust handling of starting and stopping threads by lazy generation
-    of a dedicated thread for the library and making `_AsyncLoopThread` a singleton.
-    This can avoid issues that might arise from using TinyRetriever with other
-    libraries that also use threads such as `shapely`.
+- More robust handling of starting and stopping threads by lazy generation of a
+    dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
+    avoid issues that might arise from using TinyRetriever with other libraries that
+    also use threads such as `shapely`.
 
 ## [0.1.1] - 2025-02-12
 
