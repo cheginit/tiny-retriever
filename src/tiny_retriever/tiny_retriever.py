@@ -59,7 +59,7 @@ __all__ = ["download", "fetch", "unique_filename"]
 MAX_CONCURRENT_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "10"))
 CHUNK_SIZE = 1024 * 1024  # Default chunk size (1 MB)
 MAX_HOSTS = 4  # Maximum connections to a single host (rate-limited service)
-TIMEOUT = 5 * 60  # Timeout for requests in seconds (5 minutes)
+TIMEOUT = 2 * 60  # Per-request timeout for in seconds (2 minutes)
 
 
 class _AsyncLoopThread(Thread):
@@ -127,11 +127,16 @@ def _run_in_event_loop(coro: Coroutine[Any, Any, T]) -> T:
 
 
 async def _stream_file(
-    session: ClientSession, url: StrOrURL, filepath: Path, chunk_size: int, raise_status: bool
+    session: ClientSession,
+    url: StrOrURL,
+    filepath: Path,
+    chunk_size: int,
+    raise_status: bool,
+    timeout: int,
 ) -> None:
     """Stream the response to a file, skipping if already downloaded."""
     try:
-        async with session.get(url) as response:
+        async with session.get(url, timeout=ClientTimeout(timeout)) as response:
             remote_size = int(response.headers.get("Content-Length", -1))
             if filepath.exists() and filepath.stat().st_size == remote_size:
                 return
@@ -155,14 +160,15 @@ async def _download_session(
     """Download files concurrently."""
     async with ClientSession(
         connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
-        timeout=ClientTimeout(timeout),
         loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
         raise_for_status=True,
     ) as session:
         tasks = [
-            asyncio.create_task(_stream_file(session, url, filepath, chunk_size, raise_status))
+            asyncio.create_task(
+                _stream_file(session, url, filepath, chunk_size, raise_status, timeout)
+            )
             for url, filepath in zip(urls, files)
         ]
         await asyncio.gather(*tasks)
@@ -190,7 +196,7 @@ def download(
     limit_per_host : int, optional
         Maximum number of concurrent connections per host, by default 4.
     timeout : int, optional
-        Request timeout in seconds, by default 5 minutes.
+        Request timeout in seconds, by default 2 minutes.
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
@@ -281,11 +287,14 @@ async def _make_request(
     url: StrOrURL,
     response_handler: _ResponseHandler,
     raise_status: bool,
+    timeout: int,
     **kwargs: Any,
 ) -> ResponseT | None:
     """Make a single HTTP request with the specified method and handle the response."""
     try:
-        async with session.request(method, url, **kwargs) as response:
+        async with session.request(
+            method, url, timeout=ClientTimeout(timeout), **kwargs
+        ) as response:
             return await response_handler(response)
     except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
         if raise_status:
@@ -329,7 +338,6 @@ async def _batch_request(
     """Execute multiple HTTP requests in parallel."""
     async with ClientSession(
         connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
-        timeout=ClientTimeout(timeout),
         loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
@@ -339,14 +347,14 @@ async def _batch_request(
         if request_kwargs is None:
             tasks = [
                 asyncio.create_task(
-                    _make_request(session, method, url, response_handler, raise_status)
+                    _make_request(session, method, url, response_handler, raise_status, timeout)
                 )
                 for url in urls
             ]
         else:
             tasks = [
                 asyncio.create_task(
-                    _make_request(session, method, url, response_handler, raise_status, **kwargs)
+                    _make_request(session, method, url, response_handler, raise_status, timeout, **kwargs)
                 )
                 for url, kwargs in zip(urls, request_kwargs)
             ]
@@ -416,7 +424,7 @@ def fetch(
     limit_per_host : int, optional
         Maximum number of concurrent connections per host, by default 4
     timeout : int, optional
-        Request timeout in seconds, by default 5 minutes.
+        Request timeout in seconds, by default 2 minutes.
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
