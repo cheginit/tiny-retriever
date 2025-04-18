@@ -132,11 +132,11 @@ async def _stream_file(
     filepath: Path,
     chunk_size: int,
     raise_status: bool,
-    timeout: int,
+    timeout: ClientTimeout,
 ) -> None:
     """Stream the response to a file, skipping if already downloaded."""
     try:
-        async with session.get(url, timeout=ClientTimeout(timeout)) as response:
+        async with session.get(url, timeout=timeout) as response:
             remote_size = int(response.headers.get("Content-Length", -1))
             if filepath.exists() and filepath.stat().st_size == remote_size:
                 return
@@ -158,6 +158,11 @@ async def _download_session(
     raise_status: bool,
 ) -> None:
     """Download files concurrently."""
+    timeout = ClientTimeout(
+        total=timeout,  # total timeout
+        connect=60,  # 60 seconds to establish connection
+        sock_read=300,  # 5 minutes for socket read timeout
+    )
     async with ClientSession(
         connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
         loop=_get_loop_handler().loop,
@@ -180,7 +185,7 @@ def download(
     *,
     chunk_size: int = CHUNK_SIZE,
     limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
+    timeout: int = 600,
     raise_status: bool = True,
 ) -> None:
     """Download multiple files concurrently by streaming their content to disk.
@@ -196,7 +201,7 @@ def download(
     limit_per_host : int, optional
         Maximum number of concurrent connections per host, by default 4.
     timeout : int, optional
-        Request timeout in seconds, by default 2 minutes.
+        Request timeout in seconds, by default 10 minutes.
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
@@ -354,7 +359,9 @@ async def _batch_request(
         else:
             tasks = [
                 asyncio.create_task(
-                    _make_request(session, method, url, response_handler, raise_status, timeout, **kwargs)
+                    _make_request(
+                        session, method, url, response_handler, raise_status, timeout, **kwargs
+                    )
                 )
                 for url, kwargs in zip(urls, request_kwargs)
             ]

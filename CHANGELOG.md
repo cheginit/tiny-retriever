@@ -15,8 +15,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- Change the timeout from session to request level. This allows for more granular control over
-    the timeout for each request.
+- Change the timeout from session to request level. This allows for more granular
+    control over the timeout for each request.
 
 ## [0.1.2] - 2025-02-18
 
