@@ -14,7 +14,7 @@ license = { text = "MIT" }
 authors = [
   { name = "Taher Chegini", email = "cheginit@gmail.com" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -22,11 +22,11 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: GIS",
   "Typing :: Typed",
@@ -39,6 +39,7 @@ dependencies = [
   "aiohttp>=3.8.6",
 ]
 optional-dependencies.dev = [
+  "aioresponses",
   "geopandas>=1",
   "ipykernel",
   "ipywidgets",
@@ -56,7 +57,7 @@ optional-dependencies.docs = [
   "black",
   "mkdocs",
   "mkdocs-jupyter",
-  "mkdocs-material[recommended,imaging]",
+  "mkdocs-material[imaging,recommended]",
   "mkdocstrings-python",
 ]
 optional-dependencies.lint = [
@@ -64,6 +65,7 @@ optional-dependencies.lint = [
   "pre-commit",
 ]
 optional-dependencies.test = [
+  "aioresponses",
   "coverage[toml]",
   "orjson",
   "pytest-cov",
@@ -87,7 +89,7 @@ packages = [
 ]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 100
 
 exclude = [ ".pixi", "__pycache__" ]
@@ -189,6 +191,7 @@ lint.per-file-ignores."tests/*.py" = [
   "D107",
   # specific type error ignored
   "PGH003",
+  "PLC0415",
   # use of "assert"
   "S101",
 ]
@@ -275,7 +278,7 @@ typeCheckingMode = "strict"
 build-docs = "mkdocs build --strict"
 docs = "mkdocs serve"
 
-[tool.pixi.project]
+[tool.pixi.workspace]
 channels = [ "conda-forge" ]
 platforms = [ "linux-64", "osx-64", "osx-arm64", "win-64" ]
 
@@ -285,19 +288,19 @@ tiny_retriever = { path = ".", editable = true }
 [tool.pixi.feature.dev.dependencies]
 libgdal-core = "*"
 
-[tool.pixi.feature.py39.dependencies]
-python = "~=3.9.0"
+[tool.pixi.feature.py310.dependencies]
+python = "~=3.10.0"
 
-[tool.pixi.feature.py313.dependencies]
-python = "~=3.13.0"
+[tool.pixi.feature.py314.dependencies]
+python = "~=3.14.0"
 
 [tool.pixi.environments]
-dev = { features = [ "dev", "py313" ] }
-test39 = { features = [ "test", "py39" ] }
-test313 = { features = [ "test", "py313" ] }
-typecheck = { features = [ "typecheck", "py313" ] }
-lint = { features = [ "lint", "py313" ], no-default-feature = true }
-docs = { features = [ "docs", "dev", "py313" ] }
+dev = { features = [ "dev", "py314" ] }
+test310 = { features = [ "test", "py310" ] }
+test314 = { features = [ "test", "py314" ] }
+typecheck = { features = [ "typecheck", "py314" ] }
+lint = { features = [ "lint", "py314" ], no-default-feature = true }
+docs = { features = [ "docs", "dev", "py314" ] }
 
 [tool.pixi.feature.test.tasks]
 test = "pytest"
