@@ -2,86 +2,96 @@
 from __future__ import annotations
 
 import pytest
+from aioresponses import aioresponses
 
 from tiny_retriever import download, fetch, unique_filename
 from tiny_retriever.exceptions import InputTypeError, InputValueError, ServiceError
 
 
-def test_unique_filename_invalid_params():
-    """Test that unique_filename raises InputTypeError for invalid params type."""
-    with pytest.raises(InputTypeError, match="dict or multidict.MultiDict"):
-        unique_filename("http://wrong.url", params=["invalid"])
+class TestInputValidation:
+    def test_fetch_invalid_urls_type(self):
+        with pytest.raises(InputTypeError, match="Iterable or Sequence"):
+            fetch(123, "text")
+
+    def test_fetch_invalid_urls_content(self):
+        with pytest.raises(InputTypeError, match="list of str"):
+            fetch([1, 2, 3], "text")
+
+    def test_fetch_invalid_return_type(self):
+        with pytest.raises(InputValueError, match="Given return_type"):
+            fetch(["http://example.com"], "invalid")
+
+    def test_fetch_invalid_request_method(self):
+        with pytest.raises(InputValueError, match="Given request_method"):
+            fetch(["http://example.com"], "text", request_method="invalid")
+
+    def test_fetch_request_kwargs_length_mismatch(self):
+        with pytest.raises(InputTypeError, match="list of the same length as urls"):
+            fetch(
+                ["http://example.com/1", "http://example.com/2"],
+                "text",
+                request_kwargs=[{"params": {"a": "1"}}],
+            )
+
+    def test_fetch_request_kwargs_not_dict(self):
+        with pytest.raises(InputTypeError, match="list of dict"):
+            fetch(["http://example.com/1"], "text", request_kwargs=["invalid"])
+
+    def test_fetch_request_kwargs_invalid_keys(self):
+        with pytest.raises(InputValueError, match="invalid"):
+            fetch(["http://example.com/1"], "text", request_kwargs=[{"invalid": "value"}])
+
+    def test_download_length_mismatch(self):
+        with pytest.raises(InputTypeError, match="lists of the same size"):
+            download(["http://example.com/1", "http://example.com/2"], ["file1.txt"])
+
+    def test_unique_filename_invalid_params(self):
+        with pytest.raises(InputTypeError, match=r"dict or multidict\.MultiDict"):
+            unique_filename("http://example.com", params=["invalid"])
+
+    def test_unique_filename_invalid_data(self):
+        with pytest.raises(InputTypeError, match="dict or str"):
+            unique_filename("http://example.com", data=["invalid"])
 
 
-def test_unique_filename_invalid_data():
-    """Test that unique_filename raises InputTypeError for invalid data type."""
-    with pytest.raises(InputTypeError, match="dict or str"):
-        unique_filename("http://wrong.url", data=["invalid"])
+class TestServiceError:
+    def test_http_500(self):
+        with aioresponses() as m:
+            m.get("http://example.com/error", status=500)
+            with pytest.raises(ServiceError):
+                fetch(["http://example.com/error"], "text")
+
+    def test_http_404(self):
+        with aioresponses() as m:
+            m.get("http://example.com/missing", status=404)
+            with pytest.raises(ServiceError):
+                fetch(["http://example.com/missing"], "text")
+
+    def test_service_error_message_contains_url(self):
+        with aioresponses() as m:
+            m.get("http://example.com/fail", status=500)
+            with pytest.raises(ServiceError, match=r"example\.com/fail"):
+                fetch("http://example.com/fail", "text")
+
+    def test_download_http_error(self):
+        with aioresponses() as m:
+            m.get("http://example.com/file", status=503)
+            with pytest.raises(ServiceError):
+                download("http://example.com/file", "test_dl_err.txt")
 
 
-def test_fetch_invalid_urls_type():
-    """Test that fetch raises InputTypeError when urls is not an Iterable."""
-    with pytest.raises(InputTypeError, match="Iterable or Sequence"):
-        fetch(123, "text")
+class TestExceptionClasses:
+    def test_service_error_attrs(self):
+        err = ServiceError("connection refused", "http://example.com")
+        assert "connection refused" in err.message
+        assert "http://example.com" in err.message
 
+    def test_input_value_error_message(self):
+        err = InputValueError("method", ("get", "post"))
+        assert "method" in err.message
+        assert "get" in str(err)
 
-def test_fetch_invalid_urls_content():
-    """Test that fetch raises InputTypeError when urls contains non-string elements."""
-    with pytest.raises(InputTypeError, match="list of str"):
-        fetch([1, 2, 3], "text")
-
-
-def test_fetch_invalid_request_kwargs_length():
-    """Test that fetch raises InputTypeError when request_kwargs length doesn't match urls."""
-    urls = ["http://wrong.url/1", "http://wrong.url/2"]
-    kwargs = [{"param": "value"}]
-
-    with pytest.raises(InputTypeError, match="list of the same length as urls"):
-        fetch(urls, "text", request_kwargs=kwargs)
-
-
-def test_fetch_invalid_request_kwargs_type():
-    """Test that fetch raises InputTypeError when request_kwargs contains non-dict elements."""
-    urls = ["http://wrong.url/1"]
-    kwargs = ["invalid"]
-
-    with pytest.raises(InputTypeError, match="list of dict"):
-        fetch(urls, "text", request_kwargs=kwargs)
-
-
-def test_fetch_invalid_request_kwargs_keys():
-    """Test that fetch raises InputTypeError when request_kwargs contains non-dict elements."""
-    urls = ["http://wrong.url/1"]
-    kwargs = [{"invalid": "value"}]
-
-    with pytest.raises(InputValueError, match="(invalid)"):
-        fetch(urls, "text", request_kwargs=kwargs)
-
-
-def test_fetch_invalid_return_type():
-    """Test that fetch raises InputValueError for invalid return_type."""
-    with pytest.raises(InputValueError, match="Given return_type"):
-        fetch(["http://wrong.url"], "invalid")
-
-
-def test_fetch_invalid_request_method():
-    """Test that fetch raises InputValueError for invalid request_method."""
-    with pytest.raises(InputValueError, match="Given request_method"):
-        fetch(["http://wrong.url"], "text", request_method="invalid")
-
-
-def test_service_error():
-    with pytest.raises(ServiceError):
-        fetch(["http://wrong.url/api"], "text")
-
-    with pytest.raises(ServiceError):
-        download(["http://wrong.url/file.txt"], ["downloaded.txt"])
-
-
-def test_download_invalid_length():
-    """Test that fetch raises InputTypeError when request_kwargs length doesn't match urls."""
-    urls = ["http://wrong.url/1", "http://wrong.url/2"]
-    files = ["file1.txt"]
-
-    with pytest.raises(InputTypeError, match="lists of the same size"):
-        download(urls, files)
+    def test_input_type_error_message(self):
+        err = InputTypeError("urls", "list of str")
+        assert "urls" in err.message
+        assert "list of str" in str(err)

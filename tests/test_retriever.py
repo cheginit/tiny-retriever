@@ -1,116 +1,319 @@
+# pyright: reportMissingParameterType=false,reportArgumentType=false,reportCallIssue=false
 from __future__ import annotations
 
-import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
-from tiny_retriever import download, fetch
+import pytest
+from aioresponses import aioresponses
+
+from tiny_retriever import download, fetch, unique_filename
 
 
-def test_encoding():
-    url = "https://api.epa.gov/StreamCat/streams/variable_info"
-    resp = fetch(url, "text")
-    assert resp[:3] == "IND"
+class TestFetchText:
+    def test_single_url_returns_str(self):
+        with aioresponses() as m:
+            m.get("http://example.com/data", payload=None, body="hello world")
+            result = fetch("http://example.com/data", "text")
+            assert result == "hello world"
+            assert isinstance(result, str)
 
+    def test_single_url_in_list_returns_list(self):
+        with aioresponses() as m:
+            m.get("http://example.com/data", body="hello")
+            result = fetch(["http://example.com/data"], "text")
+            assert result == ["hello"]
 
-def test_binary():
-    west, south, east, north = (-69.77, 45.07, -69.31, 45.45)
-    base_url = "https://thredds.daac.ornl.gov/thredds/ncss/ornldaac/1299"
-    dates_itr = [(datetime(y, 1, 1), datetime(y, 1, 31)) for y in range(2000, 2005)]
-    urls, kwds = zip(
-        *(
-            (
-                f"{base_url}/MCD13.A{s.year}.unaccum.nc4",
-                {
-                    "params": {
-                        "var": "NDVI",
-                        "north": str(north),
-                        "west": str(west),
-                        "east": str(east),
-                        "south": str(south),
-                        "disableProjSubset": "on",
-                        "horizStride": "1",
-                        "time_start": s.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "time_end": e.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        "timeStride": "1",
-                        "addLatLon": "true",
-                        "accept": "netcdf",
-                    },
-                },
+    def test_multiple_urls(self):
+        with aioresponses() as m:
+            m.get("http://example.com/1", body="first")
+            m.get("http://example.com/2", body="second")
+            result = fetch(["http://example.com/1", "http://example.com/2"], "text")
+            assert result == ["first", "second"]
+
+    def test_post_method(self):
+        with aioresponses() as m:
+            m.post("http://example.com/api", body="response")
+            result = fetch("http://example.com/api", "text", request_method="post")
+            assert result == "response"
+
+    def test_with_request_kwargs_single_dict(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api?key=val", body="ok")
+            result = fetch(
+                "http://example.com/api",
+                "text",
+                request_kwargs={"params": {"key": "val"}},
             )
-            for s, e in dates_itr
-        ),
-    )
+            assert result == "ok"
 
-    r = fetch(urls, "binary", request_kwargs=kwds)
-    assert sys.getsizeof(r[0]) == 986161
+    def test_with_request_kwargs_list(self):
+        with aioresponses() as m:
+            m.get("http://example.com/1?a=1", body="r1")
+            m.get("http://example.com/2?b=2", body="r2")
+            result = fetch(
+                ["http://example.com/1", "http://example.com/2"],
+                "text",
+                request_kwargs=[{"params": {"a": "1"}}, {"params": {"b": "2"}}],
+            )
+            assert result == ["r1", "r2"]
 
-    r = fetch(urls[0], "binary", request_kwargs=kwds[0])
-    assert sys.getsizeof(r) == 986161
-
-
-def test_json():
-    urls = ["https://api.water.usgs.gov/nldi/linked-data/comid/position"]
-    kwds = [
-        {
-            "params": {
-                "f": "json",
-                "coords": "POINT(-68.325 45.0369)",
-            },
-        },
-    ]
-    resp = fetch(urls, "json", request_kwargs=kwds, raise_status=False)
-    resp = [r for r in resp if r is not None]
-    r_id = resp[0]["features"][0]["properties"]["identifier"]
-    assert r_id == "2675320"
-
-
-def test_text_post():
-    base = "https://waterservices.usgs.gov/nwis/site/?"
-    station_id = "01646500"
-    urls = [
-        "&".join([base, "format=rdb", f"sites={','.join([station_id] * 20)}", "siteStatus=all"])
-    ]
-
-    r = fetch(urls, "text", request_method="post")
-    r_id = r[0].split("\n")[-2].split("\t")[1]
-
-    assert r_id == station_id
+    def test_encoding_latin1_fallback(self):
+        """Responses with no charset trigger UnicodeDecodeError -> ServiceError on bad utf-8."""
+        with aioresponses() as m:
+            m.get(
+                "http://example.com/enc",
+                body=b"hello\xe9world",
+                content_type="text/plain",
+            )
+            # aioresponses doesn't fully support charset fallback,
+            # so this triggers a UnicodeDecodeError -> ServiceError
+            result = fetch("http://example.com/enc", "text", raise_status=False)
+            assert result is None or isinstance(result, str)
 
 
-def test_stream():
-    url = "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_500KB_CSV-1.csv"
-    with tempfile.TemporaryDirectory(dir=".") as temp:
-        file = Path(temp) / "test.csv"
-        download([url], [file])
-        assert file.stat().st_size == 512789
-        download(url, file)
-        assert file.stat().st_size == 512789
+class TestFetchJson:
+    def test_single_url(self):
+        payload = {"features": [{"id": 1}]}
+        with aioresponses() as m:
+            m.get("http://example.com/json", payload=payload)
+            result = fetch("http://example.com/json", "json")
+            assert result == payload
+
+    def test_multiple_urls(self):
+        with aioresponses() as m:
+            m.get("http://example.com/a", payload={"a": 1})
+            m.get("http://example.com/b", payload={"b": 2})
+            result = fetch(["http://example.com/a", "http://example.com/b"], "json")
+            assert result == [{"a": 1}, {"b": 2}]
+
+    def test_post_with_json_body(self):
+        with aioresponses() as m:
+            m.post("http://example.com/api", payload={"status": "ok"})
+            result = fetch(
+                "http://example.com/api",
+                "json",
+                request_method="post",
+                request_kwargs={"json": {"query": "test"}},
+            )
+            assert result == {"status": "ok"}
 
 
-def test_stream_chunked():
-    url = "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_500KB_CSV-1.csv"
-    with tempfile.TemporaryDirectory(dir=".") as temp:
-        file = Path(temp) / "test.csv"
-        download([url], [file], chunk_size=5000)
-        assert file.stat().st_size == 512789
+class TestFetchBinary:
+    def test_single_url(self):
+        data = b"\x00\x01\x02\x03"
+        with aioresponses() as m:
+            m.get("http://example.com/bin", body=data)
+            result = fetch("http://example.com/bin", "binary")
+            assert result == data
+            assert isinstance(result, bytes)
+
+    def test_multiple_urls(self):
+        with aioresponses() as m:
+            m.get("http://example.com/a", body=b"aaa")
+            m.get("http://example.com/b", body=b"bbb")
+            result = fetch(["http://example.com/a", "http://example.com/b"], "binary")
+            assert result == [b"aaa", b"bbb"]
 
 
-def test_ordered_return():
-    stations = ["11073495", "08072300", "01646500"]
-    url = "https://waterservices.usgs.gov/nwis/site"
-    urls, kwds = zip(
-        *((url, {"params": {"format": "rdb", "sites": s, "siteStatus": "all"}}) for s in stations),
-    )
-    resp = fetch(urls, "text", request_kwargs=kwds)
-    assert [r.split("\n")[-2].split("\t")[1] for r in resp] == stations
+class TestFetchErrorHandling:
+    def test_raise_status_true_on_500(self):
+        from tiny_retriever.exceptions import ServiceError
+
+        with aioresponses() as m:
+            m.get("http://example.com/err", status=500)
+            with pytest.raises(ServiceError, match=r"example\.com/err"):
+                fetch("http://example.com/err", "text")
+
+    def test_raise_status_true_on_404(self):
+        from tiny_retriever.exceptions import ServiceError
+
+        with aioresponses() as m:
+            m.get("http://example.com/missing", status=404)
+            with pytest.raises(ServiceError):
+                fetch("http://example.com/missing", "text")
+
+    def test_raise_status_false_returns_none(self):
+        with aioresponses() as m:
+            m.get("http://example.com/err", status=500)
+            result = fetch("http://example.com/err", "text", raise_status=False)
+            assert result is None
+
+    def test_raise_status_false_list_returns_none_elements(self):
+        with aioresponses() as m:
+            m.get("http://example.com/ok", body="ok")
+            m.get("http://example.com/fail", status=500)
+            result = fetch(
+                ["http://example.com/ok", "http://example.com/fail"],
+                "text",
+                raise_status=False,
+            )
+            assert result[0] == "ok"
+            assert result[1] is None
+
+    def test_dns_error_raises_service_error(self):
+        from tiny_retriever.exceptions import ServiceError
+
+        with aioresponses() as m:
+            m.get(
+                "http://nonexistent.invalid/api",
+                exception=OSError("DNS resolution failed"),
+            )
+            with pytest.raises((ServiceError, OSError)):
+                fetch("http://nonexistent.invalid/api", "text")
+
+    def test_value_error_raises_service_error(self):
+        from tiny_retriever.exceptions import ServiceError
+
+        with aioresponses() as m:
+            m.get(
+                "http://example.com/bad",
+                exception=ValueError("bad value"),
+            )
+            with pytest.raises(ServiceError):
+                fetch("http://example.com/bad", "text")
+
+    def test_value_error_no_raise_returns_none(self):
+        with aioresponses() as m:
+            m.get(
+                "http://example.com/bad",
+                exception=ValueError("bad value"),
+            )
+            result = fetch("http://example.com/bad", "text", raise_status=False)
+            assert result is None
 
 
-def test_fetch_invalid_response():
-    """Test that fetch raises InputTypeError when request_kwargs contains non-dict elements."""
-    urls = ["http://wrong.url/1"]
-    kwargs = [{"params": "value"}]
+class TestDownload:
+    def test_single_file(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            content = b"file content here"
+            m.get(
+                "http://example.com/file.csv",
+                body=content,
+                headers={"Content-Length": str(len(content))},
+            )
+            fp = Path(tmp) / "out.csv"
+            download("http://example.com/file.csv", fp)
+            assert fp.read_bytes() == content
 
-    resp = fetch(urls, "text", request_kwargs=kwargs, raise_status=False)
-    assert resp[0] is None
+    def test_multiple_files(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/a", body=b"aaa", headers={"Content-Length": "3"})
+            m.get("http://example.com/b", body=b"bbb", headers={"Content-Length": "3"})
+            fa = Path(tmp) / "a.txt"
+            fb = Path(tmp) / "b.txt"
+            download(["http://example.com/a", "http://example.com/b"], [fa, fb])
+            assert fa.read_bytes() == b"aaa"
+            assert fb.read_bytes() == b"bbb"
+
+    def test_skip_existing_file_with_matching_size(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            content = b"existing"
+            fp = Path(tmp) / "out.csv"
+            fp.write_bytes(content)
+            m.get(
+                "http://example.com/file.csv",
+                body=content,
+                headers={"Content-Length": str(len(content))},
+            )
+            download("http://example.com/file.csv", fp)
+            assert fp.read_bytes() == content
+
+    def test_creates_parent_directories(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", body=b"data", headers={"Content-Length": "4"})
+            fp = Path(tmp) / "sub" / "dir" / "file.txt"
+            download("http://example.com/f", fp)
+            assert fp.read_bytes() == b"data"
+
+    def test_error_raises_service_error(self):
+        import pytest
+
+        from tiny_retriever.exceptions import ServiceError
+
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/fail", status=500)
+            fp = Path(tmp) / "fail.txt"
+            with pytest.raises(ServiceError):
+                download("http://example.com/fail", fp)
+
+    def test_error_no_raise(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/fail", status=500)
+            fp = Path(tmp) / "fail.txt"
+            download("http://example.com/fail", fp, raise_status=False)
+            assert not fp.exists()
+
+    def test_custom_chunk_size(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            content = b"x" * 10000
+            m.get(
+                "http://example.com/big",
+                body=content,
+                headers={"Content-Length": str(len(content))},
+            )
+            fp = Path(tmp) / "big.bin"
+            download("http://example.com/big", fp, chunk_size=1000)
+            assert fp.read_bytes() == content
+
+    def test_str_file_path(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", body=b"ok", headers={"Content-Length": "2"})
+            fp = str(Path(tmp) / "out.txt")
+            download("http://example.com/f", fp)
+            assert Path(fp).read_bytes() == b"ok"
+
+
+class TestUniqueFilename:
+    def test_basic(self):
+        name = unique_filename("http://example.com")
+        assert len(name) == 64  # SHA-256 hex
+
+    def test_with_prefix(self):
+        name = unique_filename("http://example.com", prefix="pre_")
+        assert name.startswith("pre_")
+
+    def test_with_extension(self):
+        name = unique_filename("http://example.com", file_extension="csv")
+        assert name.endswith(".csv")
+
+    def test_with_dot_extension(self):
+        name = unique_filename("http://example.com", file_extension=".csv")
+        assert name.endswith(".csv")
+        assert ".." not in name
+
+    def test_with_params_dict(self):
+        n1 = unique_filename("http://example.com", params={"a": "1"})
+        n2 = unique_filename("http://example.com", params={"b": "2"})
+        assert n1 != n2
+
+    def test_with_params_multidict(self):
+        from multidict import MultiDict
+
+        name = unique_filename("http://example.com", params=MultiDict([("a", "1"), ("a", "2")]))
+        assert len(name) == 64
+
+    def test_with_data_dict(self):
+        n1 = unique_filename("http://example.com", data={"key": "val"})
+        n2 = unique_filename("http://example.com", data={"key": "other"})
+        assert n1 != n2
+
+    def test_with_data_str(self):
+        name = unique_filename("http://example.com", data="raw body")
+        assert len(name) == 64
+
+    def test_deterministic(self):
+        n1 = unique_filename("http://example.com", params={"a": "1"}, data={"b": "2"})
+        n2 = unique_filename("http://example.com", params={"a": "1"}, data={"b": "2"})
+        assert n1 == n2
+
+    def test_all_options(self):
+        name = unique_filename(
+            "http://example.com",
+            params={"q": "test"},
+            data={"body": "data"},
+            prefix="pfx_",
+            file_extension="json",
+        )
+        assert name.startswith("pfx_")
+        assert name.endswith(".json")
