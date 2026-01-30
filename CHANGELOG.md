@@ -16,29 +16,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Change the timeout from session to request level. This allows for more granular
-    control over the timeout for each request.
+  control over the timeout for each request.
 
 ## [0.1.2] - 2025-02-18
 
 ### Changed
 
 - More robust handling of starting and stopping threads by lazy generation of a
-    dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
-    avoid issues that might arise from using TinyRetriever with other libraries that
-    also use threads such as `shapely`.
+  dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
+  avoid issues that might arise from using TinyRetriever with other libraries that also
+  use threads such as `shapely`.
 
 ## [0.1.1] - 2025-02-12
 
 ### Added
 
 - Add support for passing single URL/key to both `fetch` and `download` functions. This
-    makes using the function easier when there's just one query to be made. The result
-    is returned as a single item too.
+  makes using the function easier when there's just one query to be made. The result is
+  returned as a single item too.
 
 ### Changed
 
 - Check the validity of the input `request_kwargs` in `fetch` function based on the
-    acceptable args for `aiohttp.ClientSession.request` method.
+  acceptable args for `aiohttp.ClientSession.request` method.
 
 ## [0.1.0] - 2025-02-11
 

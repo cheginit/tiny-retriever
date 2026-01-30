@@ -30,10 +30,10 @@ TinyRetriever provides the following features:
 - **Streaming Support**: Stream large files efficiently with customizable chunk sizes
 - **Unique Filenames**: Generate unique filenames based on query parameters
 - **Works in Jupyter Notebooks**: Easily use TinyRetriever in Jupyter notebooks without
-    any additional setup or dependencies
+  any additional setup or dependencies
 - **Robust Error Handling**: Optional status raising and comprehensive error messages
 - **Performance Optimized**: Uses [`orjson`](https://github.com/ijl/orjson) when
-    available for up to 14x faster JSON parsing
+  available for up to 14x faster JSON parsing
 
 TinyRetriever does not use `nest-asyncio`, instead it creates and manages a dedicated
 thread for running the event loop. This allows you to use TinyRetriever in Jupyter
