@@ -45,6 +45,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
+    from ssl import SSLContext
 
     from aiohttp import ClientResponse
     from aiohttp.typedefs import StrOrURL
@@ -153,18 +154,24 @@ async def _download_session(
     urls: Sequence[StrOrURL],
     files: Sequence[Path],
     limit_per_host: int,
-    timeout: int,
+    timeout: float,
+    ssl: bool | SSLContext,
     chunk_size: int,
     raise_status: bool,
 ) -> None:
     """Download files concurrently."""
-    timeout = ClientTimeout(
+    client_timeout = ClientTimeout(
         total=timeout,  # total timeout
         connect=60,  # 60 seconds to establish connection
         sock_read=300,  # 5 minutes for socket read timeout
     )
+    connector = TCPConnector(
+        limit_per_host=limit_per_host,
+        ssl=ssl,
+        limit=MAX_CONCURRENT_CALLS,
+    )
     async with ClientSession(
-        connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
+        connector=connector,
         loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
@@ -172,9 +179,9 @@ async def _download_session(
     ) as session:
         tasks = [
             asyncio.create_task(
-                _stream_file(session, url, filepath, chunk_size, raise_status, timeout)
+                _stream_file(session, url, filepath, chunk_size, raise_status, client_timeout)
             )
-            for url, filepath in zip(urls, files)
+            for url, filepath in zip(urls, files, strict=False)
         ]
         await asyncio.gather(*tasks)
 
@@ -185,7 +192,8 @@ def download(
     *,
     chunk_size: int = CHUNK_SIZE,
     limit_per_host: int = MAX_HOSTS,
-    timeout: int = 600,
+    timeout: float = 600,
+    ssl: bool | SSLContext = True,
     raise_status: bool = True,
 ) -> None:
     """Download multiple files concurrently by streaming their content to disk.
@@ -202,6 +210,8 @@ def download(
         Maximum number of concurrent connections per host, by default 4.
     timeout : int, optional
         Request timeout in seconds, by default 10 minutes.
+    ssl : bool or ssl.SSLContext, optional
+        SSL configuration for the requests, by default True.
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
@@ -223,7 +233,7 @@ def download(
         parent_dir.mkdir(parents=True, exist_ok=True)
 
     _run_in_event_loop(
-        _download_session(urls, file_paths, limit_per_host, timeout, chunk_size, raise_status)
+        _download_session(urls, file_paths, limit_per_host, timeout, ssl, chunk_size, raise_status)
     )
 
 
@@ -292,7 +302,7 @@ async def _make_request(
     url: StrOrURL,
     response_handler: _ResponseHandler,
     raise_status: bool,
-    timeout: int,
+    timeout: float,
     **kwargs: Any,
 ) -> ResponseT | None:
     """Make a single HTTP request with the specified method and handle the response."""
@@ -313,7 +323,8 @@ async def _batch_request(
     method: RequestMethod,
     response_handler: _ResponseHandler,
     limit_per_host: int,
-    timeout: int,
+    timeout: float,
+    ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: Literal[False],
 ) -> list[ResponseT | None]: ...
@@ -325,7 +336,8 @@ async def _batch_request(
     method: RequestMethod,
     response_handler: _ResponseHandler,
     limit_per_host: int,
-    timeout: int,
+    timeout: float,
+    ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: Literal[True],
 ) -> list[ResponseT]: ...
@@ -336,13 +348,15 @@ async def _batch_request(
     method: RequestMethod,
     response_handler: _ResponseHandler,
     limit_per_host: int,
-    timeout: int,
+    timeout: float,
+    ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: bool,
 ) -> list[ResponseT] | list[ResponseT | None]:
     """Execute multiple HTTP requests in parallel."""
+    connector = TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS, ssl=ssl)
     async with ClientSession(
-        connector=TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS),
+        connector=connector,
         loop=_get_loop_handler().loop,
         json_serialize=_json_serialize,
         trust_env=True,
@@ -363,7 +377,7 @@ async def _batch_request(
                         session, method, url, response_handler, raise_status, timeout, **kwargs
                     )
                 )
-                for url, kwargs in zip(urls, request_kwargs)
+                for url, kwargs in zip(urls, request_kwargs, strict=False)
             ]
         return await asyncio.gather(*tasks)
 
@@ -401,7 +415,8 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = MAX_HOSTS,
-    timeout: int = TIMEOUT,
+    timeout: float = TIMEOUT,
+    ssl: bool | SSLContext = True,
     raise_status: bool = True,
 ) -> (
     str
@@ -432,6 +447,8 @@ def fetch(
         Maximum number of concurrent connections per host, by default 4
     timeout : int, optional
         Request timeout in seconds, by default 2 minutes.
+    ssl : bool or ssl.SSLContext, optional
+        SSL configuration for the requests, by default True.
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
@@ -484,6 +501,7 @@ def fetch(
                 handlers[return_type],
                 limit_per_host=limit_per_host,
                 timeout=timeout,
+                ssl=ssl,
                 request_kwargs=kwargs_list,
                 raise_status=True,
             )
@@ -496,6 +514,7 @@ def fetch(
                 handlers[return_type],
                 limit_per_host=limit_per_host,
                 timeout=timeout,
+                ssl=ssl,
                 request_kwargs=kwargs_list,
                 raise_status=False,
             )
