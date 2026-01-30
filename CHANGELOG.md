@@ -11,6 +11,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+## [0.2.0] - 2026-01-30
+
+### Added
+
+- Add support for passing `ssl` parameter to the `fetch` and `download` functions to
+  allow customization of SSL context for HTTPS requests.
+
+### Changed
+
+- Dropped support for Python 3.9 due to EOl.
+- Use `aioresponses` library for testing.
+
 ## [0.1.3] - 2025-02-20
 
 ### Changed
