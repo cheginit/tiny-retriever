@@ -94,6 +94,23 @@ def test_cleanup():
     assert new_instance is not instance
 
 
+def test_cleanup_when_no_instance():
+    """Test cleanup when no instance exists."""
+    _AsyncLoopThread._instance = None
+    _AsyncLoopThread._cleanup()  # Should not raise
+    assert _AsyncLoopThread._instance is None
+
+
+def test_stop_when_not_running():
+    """Test stop on an already-stopped instance."""
+    instance = _AsyncLoopThread.get_instance()
+    instance.stop()
+    assert not instance._running.is_set()
+    # Calling stop again should be a no-op
+    instance.stop()
+    assert not instance._running.is_set()
+
+
 def test_stop_and_restart():
     """Test stopping and restarting the thread."""
     instance1 = _AsyncLoopThread.get_instance()

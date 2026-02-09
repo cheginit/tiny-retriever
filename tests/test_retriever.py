@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 from aioresponses import aioresponses
 
-from tiny_retriever import download, fetch, unique_filename
+from tiny_retriever import check_downloads, download, fetch, unique_filename
+from tiny_retriever.exceptions import ServiceError
 
 
 class TestFetchText:
@@ -262,6 +263,95 @@ class TestDownload:
             fp = str(Path(tmp) / "out.txt")
             download("http://example.com/f", fp)
             assert Path(fp).read_bytes() == b"ok"
+
+    def test_size_mismatch_raises_error(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get(
+                "http://example.com/truncated",
+                body=b"short",
+                headers={"Content-Length": "100"},
+            )
+            fp = Path(tmp) / "truncated.bin"
+            with pytest.raises(ServiceError, match="does not match expected size"):
+                download("http://example.com/truncated", fp)
+            assert not fp.exists()
+
+    def test_no_content_length_skips_size_check(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", body=b"data", headers={})
+            fp = Path(tmp) / "out.bin"
+            download("http://example.com/f", fp)
+            assert fp.read_bytes() == b"data"
+
+
+class TestCheckDownloads:
+    def test_all_valid(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            content = b"valid data"
+            fp = Path(tmp) / "file.bin"
+            fp.write_bytes(content)
+            m.get(
+                "http://example.com/file.bin",
+                headers={"Content-Length": str(len(content))},
+            )
+            result = check_downloads("http://example.com/file.bin", fp)
+            assert result == {}
+
+    def test_corrupted_file(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "file.bin"
+            fp.write_bytes(b"short")
+            m.get(
+                "http://example.com/file.bin",
+                headers={"Content-Length": "100"},
+            )
+            result = check_downloads("http://example.com/file.bin", fp)
+            assert result == {fp: 100}
+
+    def test_mixed_valid_and_invalid(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fa = Path(tmp) / "a.txt"
+            fb = Path(tmp) / "b.txt"
+            fa.write_bytes(b"aaa")
+            fb.write_bytes(b"bb")
+            m.get("http://example.com/a", headers={"Content-Length": "3"})
+            m.get("http://example.com/b", headers={"Content-Length": "100"})
+            result = check_downloads(["http://example.com/a", "http://example.com/b"], [fa, fb])
+            assert result == {fb: 100}
+
+    def test_no_files_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "missing.bin"
+            result = check_downloads("http://example.com/missing.bin", fp)
+            assert result == {}
+
+    def test_missing_content_length(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "file.bin"
+            fp.write_bytes(b"data")
+            m.get("http://example.com/file.bin", headers={})
+            result = check_downloads("http://example.com/file.bin", fp)
+            assert result == {}
+
+    def test_str_file_path(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fp = str(Path(tmp) / "file.bin")
+            Path(fp).write_bytes(b"data")
+            m.get(
+                "http://example.com/file.bin",
+                headers={"Content-Length": str(len(b"data"))},
+            )
+            result = check_downloads("http://example.com/file.bin", fp)
+            assert result == {}
+
+    def test_only_existing_files_checked(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fa = Path(tmp) / "exists.txt"
+            fb = Path(tmp) / "missing.txt"
+            fa.write_bytes(b"aaa")
+            m.get("http://example.com/a", headers={"Content-Length": "3"})
+            result = check_downloads(["http://example.com/a", "http://example.com/b"], [fa, fb])
+            assert result == {}
 
 
 class TestUniqueFilename:

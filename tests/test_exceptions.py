@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from aioresponses import aioresponses
 
-from tiny_retriever import download, fetch, unique_filename
+from tiny_retriever import check_downloads, download, fetch, unique_filename
 from tiny_retriever.exceptions import InputTypeError, InputValueError, ServiceError
 
 
@@ -44,6 +44,10 @@ class TestInputValidation:
     def test_download_length_mismatch(self):
         with pytest.raises(InputTypeError, match="lists of the same size"):
             download(["http://example.com/1", "http://example.com/2"], ["file1.txt"])
+
+    def test_check_downloads_length_mismatch(self):
+        with pytest.raises(InputTypeError, match="lists of the same size"):
+            check_downloads(["http://example.com/1", "http://example.com/2"], ["file1.txt"])
 
     def test_unique_filename_invalid_params(self):
         with pytest.raises(InputTypeError, match=r"dict or multidict\.MultiDict"):
