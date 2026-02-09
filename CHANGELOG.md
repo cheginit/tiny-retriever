@@ -7,9 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-09
+
 ### Added
 
-### Changed
+- Add `check_downloads` function for validating existing downloaded files against remote
+  file sizes without re-downloading. Returns a dictionary of files whose local size does
+  not match the remote `Content-Length`.
+
+### Fixed
+
+- Fix `FileNotFoundError` in `download` when a downloaded file's size did not match the
+  remote `Content-Length`. The file was deleted before its size was read for the error
+  message.
 
 ## [0.2.0] - 2026-01-30
 

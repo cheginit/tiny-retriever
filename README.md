@@ -39,9 +39,10 @@ TinyRetriever does not use `nest-asyncio`, instead it creates and manages a dedi
 thread for running the event loop. This allows you to use TinyRetriever in Jupyter
 notebooks and other environments where the event loop is already running.
 
-There are three main functions in TinyRetriever:
+There are four main functions in TinyRetriever:
 
 - `download`: Download files concurrently;
+- `check_downloads`: Validate existing downloaded files against remote file sizes;
 - `fetch`: Fetch queries concurrently and return responses as text, JSON, or binary;
 - `unique_filename`: Generate unique filenames based on query parameters.
 
@@ -97,6 +98,18 @@ text_responses = terry.fetch(urls, "text")
 
 # Get binary responses
 binary_responses = terry.fetch(urls, "binary")
+```
+
+### Validating Downloads
+
+```python
+# Check if previously downloaded files match remote sizes
+invalid = terry.check_downloads(urls, paths)
+if invalid:
+    for path, expected_size in invalid.items():
+        print(f"{path}: local={path.stat().st_size}, expected={expected_size}")
+else:
+    print("All files are valid!")
 ```
 
 ### Generate Unique Filenames
