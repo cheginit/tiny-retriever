@@ -80,13 +80,13 @@ urls.CI = "https://github.com/cheginit/tiny-retriever/actions"
 urls.Homepage = "https://tiny-retriever.readthedocs.io"
 urls.Issues = "https://github.com/cheginit/tiny-retriever/issues"
 
-[tool.hatch.version]
-source = "vcs"
-
 [tool.hatch.build.targets.wheel]
 packages = [
   "src/tiny_retriever",
 ]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.ruff]
 target-version = "py310"
@@ -234,6 +234,9 @@ testpaths = [
   "tests",
 ]
 
+[tool.coverage.paths]
+source = [ "src", "*/site-packages" ]
+
 [tool.coverage.report]
 exclude_lines = [
   "if TYPE_CHECKING:",
@@ -243,9 +246,6 @@ ignore_errors = true
 omit = [
   "**/__init__.py",
 ]
-
-[tool.coverage.paths]
-source = [ "src", "*/site-packages" ]
 
 [tool.coverage.run]
 branch = true
@@ -274,26 +274,6 @@ reportAttributeAccessIssue = false
 reportInvalidTypeForm = false
 typeCheckingMode = "strict"
 
-[tool.pixi.feature.docs.tasks]
-build-docs = "mkdocs build --strict"
-docs = "mkdocs serve"
-
-[tool.pixi.workspace]
-channels = [ "conda-forge" ]
-platforms = [ "linux-64", "osx-64", "osx-arm64", "win-64" ]
-
-[tool.pixi.pypi-dependencies]
-tiny_retriever = { path = ".", editable = true }
-
-[tool.pixi.feature.dev.dependencies]
-libgdal-core = "*"
-
-[tool.pixi.feature.py310.dependencies]
-python = "~=3.10.0"
-
-[tool.pixi.feature.py314.dependencies]
-python = "~=3.14.0"
-
 [tool.pixi.environments]
 dev = { features = [ "dev", "py314" ] }
 test310 = { features = [ "test", "py310" ] }
@@ -302,15 +282,34 @@ typecheck = { features = [ "typecheck", "py314" ] }
 lint = { features = [ "lint", "py314" ], no-default-feature = true }
 docs = { features = [ "docs", "dev", "py314" ] }
 
-[tool.pixi.feature.test.tasks]
-test = "pytest"
-report = { cmd = [ "coverage", "report" ], depends-on = [ "test" ] }
-html = { cmd = [ "coverage", "html" ], depends-on = [ "report" ] }
+[tool.pixi.feature.dev.dependencies]
+libgdal-core = "*"
+
+[tool.pixi.feature.docs.tasks]
+build-docs = "mkdocs build --strict"
+docs = "mkdocs serve"
 
 [tool.pixi.feature.lint.tasks]
 lint = "pre-commit run --all-files"
 pcupdate = "pre-commit autoupdate"
 spell = "codespell -w"
 
+[tool.pixi.feature.py310.dependencies]
+python = "~=3.10.0"
+
+[tool.pixi.feature.py314.dependencies]
+python = "~=3.14.0"
+
+[tool.pixi.feature.test.tasks]
+test = "pytest"
+report = { cmd = [ "coverage", "report" ], depends-on = [ "test" ] }
+html = { cmd = [ "coverage", "html" ], depends-on = [ "report" ] }
+
 [tool.pixi.feature.typecheck.tasks]
 typecheck = "pyright"
+[tool.pixi.pypi-dependencies]
+tiny_retriever = { path = ".", editable = true }
+
+[tool.pixi.workspace]
+channels = [ "conda-forge" ]
+platforms = [ "linux-64", "osx-64", "osx-arm64", "win-64" ]
