@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import contextlib
 import hashlib
 import json
 import os
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-__all__ = ["download", "fetch", "unique_filename"]
+__all__ = ["check_downloads", "download", "fetch", "unique_filename"]
 
 # Maximum number of overall concurrent requests
 MAX_CONCURRENT_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "10"))
@@ -127,6 +128,48 @@ def _run_in_event_loop(coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run_coroutine_threadsafe(coro, handler.loop).result()
 
 
+async def _get_filesize(
+    session: ClientSession,
+    url: StrOrURL,
+    timeout: ClientTimeout,
+) -> int:
+    """Stream the response to a file, skipping if already downloaded."""
+    with contextlib.suppress(
+        ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError
+    ):
+        async with session.get(url, timeout=timeout) as response:
+            return int(response.headers.get("Content-Length", -1))
+    return -1
+
+
+async def _filesize_session(
+    urls: Sequence[StrOrURL],
+    limit_per_host: int,
+    timeout: float,
+    ssl: bool | SSLContext,
+) -> list[int]:
+    """Download files concurrently."""
+    client_timeout = ClientTimeout(
+        total=timeout,  # total timeout
+        connect=60,  # 60 seconds to establish connection
+        sock_read=300,  # 5 minutes for socket read timeout
+    )
+    connector = TCPConnector(
+        limit_per_host=limit_per_host,
+        ssl=ssl,
+        limit=MAX_CONCURRENT_CALLS,
+    )
+    async with ClientSession(
+        connector=connector,
+        loop=_get_loop_handler().loop,
+        json_serialize=_json_serialize,
+        trust_env=True,
+        raise_for_status=True,
+    ) as session:
+        tasks = [asyncio.create_task(_get_filesize(session, url, client_timeout)) for url in urls]
+        return await asyncio.gather(*tasks)
+
+
 async def _stream_file(
     session: ClientSession,
     url: StrOrURL,
@@ -145,6 +188,13 @@ async def _stream_file(
             async with aiofiles.open(filepath, "wb") as file:
                 async for chunk in response.content.iter_chunked(chunk_size):
                     await file.write(chunk)
+            local_size = filepath.stat().st_size
+            if remote_size > 0 and local_size != remote_size:
+                filepath.unlink(missing_ok=True)
+                raise ServiceError(
+                    f"Downloaded file size does not match expected size ({local_size} != {remote_size})",
+                    str(url),
+                )
     except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
         if raise_status:
             raise ServiceError(str(ex), str(url)) from ex
@@ -235,6 +285,72 @@ def download(
     _run_in_event_loop(
         _download_session(urls, file_paths, limit_per_host, timeout, ssl, chunk_size, raise_status)
     )
+
+
+def check_downloads(
+    urls: StrOrURL | Sequence[StrOrURL],
+    file_paths: Path | str | Sequence[Path | str],
+    *,
+    limit_per_host: int = MAX_HOSTS,
+    timeout: float = 600,
+    ssl: bool | SSLContext = True,
+) -> dict[Path, int]:
+    """Check whether existing downloaded files match the remote file size.
+
+    Only files that already exist on disk are checked. Files that
+    are missing or whose local size matches the remote ``Content-Length``
+    are *not* included in the returned dictionary.
+
+    .. note::
+
+        Some servers do not provide a ``Content-Length`` header. In
+        those cases the remote size cannot be determined and the
+        corresponding file is silently skipped (treated as valid).
+
+    Parameters
+    ----------
+    urls : str or list of str
+        URLs corresponding to the downloaded files.
+    file_paths : pathlib.Path, str, or list of those
+        Local paths to the downloaded files.
+    limit_per_host : int, optional
+        Maximum number of concurrent connections per host, by default 4.
+    timeout : float, optional
+        Request timeout in seconds, by default 10 minutes.
+    ssl : bool or ssl.SSLContext, optional
+        SSL configuration for the requests, by default True.
+
+    Returns
+    -------
+    dict of pathlib.Path to int
+        Mapping of file paths whose local size does **not** match the
+        remote size to the expected remote size. An empty dictionary
+        means all existing files are valid.
+
+    Raises
+    ------
+    InputTypeError
+        If ``urls`` and ``file_paths`` are not lists of the same size.
+    """
+    file_paths = [file_paths] if isinstance(file_paths, (str, Path)) else list(file_paths)
+    file_paths = [Path(fp) for fp in file_paths]
+    urls = [urls] if isinstance(urls, (str, URL)) else list(urls)
+    if len(urls) != len(file_paths):
+        raise InputTypeError("urls/files_paths", "lists of the same size")
+
+    existing = [(i, fp) for i, fp in enumerate(file_paths) if fp.exists()]
+    if not existing:
+        return {}
+
+    existing_urls = [urls[i] for i, _ in existing]
+    remote_sizes = _run_in_event_loop(
+        _filesize_session(existing_urls, limit_per_host, timeout, ssl)
+    )
+    return {
+        fp: remote
+        for (_, fp), remote in zip(existing, remote_sizes, strict=False)
+        if remote >= 0 and fp.stat().st_size != remote
+    }
 
 
 def unique_filename(

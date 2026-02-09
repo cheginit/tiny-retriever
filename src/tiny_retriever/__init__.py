@@ -7,7 +7,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 
 from tiny_retriever import exceptions
-from tiny_retriever.tiny_retriever import download, fetch, unique_filename
+from tiny_retriever.tiny_retriever import check_downloads, download, fetch, unique_filename
 
 try:
     __version__ = version("tiny_retriever")
@@ -19,6 +19,7 @@ if sys.platform == "win32":  # pragma: no cover
 
 __all__ = [
     "__version__",
+    "check_downloads",
     "download",
     "exceptions",
     "fetch",
