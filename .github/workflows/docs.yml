@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
 jobs:
   docs:
     name: Deploy Documentation
