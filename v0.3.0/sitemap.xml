@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/reference/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/examples/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/examples/hydrodata/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/CHANGELOG/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/CONTRIBUTING/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+    <url>
+        <loc>https://cheginit.github.io/tiny-retriever/v0.3.0/</loc>
+        <changefreq>daily</changefreq>
+    </url>
+</urlset>
