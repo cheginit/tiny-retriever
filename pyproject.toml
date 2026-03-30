@@ -78,9 +78,9 @@ optional-dependencies.test = [
 optional-dependencies.typecheck = [
   "pyright",
 ]
-urls.Changelog = "https://tiny-retriever.readthedocs.io/en/latest/CHANGELOG"
+urls.Changelog = "https://cheginit.github.io/tiny-retriever/CHANGELOG"
 urls.CI = "https://github.com/cheginit/tiny-retriever/actions"
-urls.Homepage = "https://tiny-retriever.readthedocs.io"
+urls.Homepage = "https://cheginit.github.io/tiny-retriever"
 urls.Issues = "https://github.com/cheginit/tiny-retriever/issues"
 
 [tool.hatch]
@@ -228,8 +228,8 @@ changelog-update = "git cliff -c pyproject.toml -o CHANGELOG.md"
 
 [tool.pixi.feature.docs.tasks]
 docs-build = "mkdocs build --strict"
-docs-serve = "mkdocs serve"
-docs-deploy = "mike deploy --push --update-aliases dev latest"
+docs-serve = { cmd = "mkdocs serve", depends-on = [ "docs-build" ] }
+docs-deploy = "mike deploy --push latest"
 docs-release = "mike deploy --push --update-aliases $(git describe --tags --abbrev=0) stable"
 
 [tool.pixi.feature.lint.tasks]

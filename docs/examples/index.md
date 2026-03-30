@@ -7,10 +7,10 @@ installed, the dev environment includes everything you need:
 pixi install -e dev
 ```
 
-Alternatively, you can create an environment with `micromamba` (or `conda` or `mamba`):
+Alternatively, you can create an environment with `conda` (or `mamba` or `micromamba`):
 
 ```bash
-micromamba create -n tiny_retriever tiny_retriever ipykernel ipywidgets rioxarray geopandas matplotlib
+conda create -n dev tiny_retriever ipykernel ipywidgets rioxarray geopandas matplotlib
 ```
 
 <div class="grid cards" markdown>

@@ -1,8 +1,8 @@
 site_name: TinyRetriever
-site_url: https://tiny-retriever.readthedocs.io/en/latest/
+site_url: https://cheginit.github.io/tiny-retriever/
 
 theme:
-  name: material
+  name: materialx
   custom_dir: docs/overrides
   favicon: assets/logo.png
   logo: assets/logo.png
@@ -79,7 +79,6 @@ markdown_extensions:
 - pymdownx.inlinehilite
 - pymdownx.snippets
 - pymdownx.details
-- pymdownx.superfences
 - pymdownx.superfences:
     custom_fences:
     - name: mermaid
@@ -91,7 +90,9 @@ markdown_extensions:
     permalink: '#'
 
 extra:
-  homepage: https://tiny-retriever.readthedocs.io/en/latest/
+  homepage: https://cheginit.github.io/tiny-retriever/
+  version:
+    provider: mike
   social:
   - icon: fontawesome/brands/mastodon
     link: https://mastodon.social/@cheginit
@@ -104,7 +105,7 @@ nav:
 - Getting Started: README.md
 - Examples:
   - Overview: examples/index.md
-  - Spline Interpolation: examples/example.ipynb
+  - Hydrology Data: examples/hydrodata.ipynb
 - API Reference: reference.md
 - Release Notes: CHANGELOG.md
 - Contributing: CONTRIBUTING.md
@@ -117,10 +118,10 @@ plugins:
     default_handler: python
     handlers:
       python:
-        import:
+        inventories:
         - https://docs.python.org/3/objects.inv
         - https://docs.aiohttp.org/en/stable/objects.inv
-        paths: [tiny_retriever]
+        paths: [src]
         options:
           docstring_style: numpy
           inherited_members: true
