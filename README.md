@@ -31,9 +31,11 @@ TinyRetriever provides the following features:
 - **Unique Filenames**: Generate unique filenames based on query parameters
 - **Works in Jupyter Notebooks**: Easily use TinyRetriever in Jupyter notebooks without
     any additional setup or dependencies
+- **Automatic Retries**: Exponential backoff with jitter for transient errors (5xx, DNS
+    failures, timeouts)
 - **Robust Error Handling**: Optional status raising and comprehensive error messages
 - **Performance Optimized**: Uses [`orjson`](https://github.com/ijl/orjson) when
-    available for up to 14x faster JSON parsing
+    available for faster JSON serialization
 
 TinyRetriever does not use `nest-asyncio`, instead it creates and manages a dedicated
 thread for running the event loop. This allows you to use TinyRetriever in Jupyter
@@ -155,14 +157,28 @@ except ServiceError as e:
     print(f"Request failed: {e}")
 ```
 
+### Retry Configuration
+
+All functions retry transient errors (5xx, DNS failures, timeouts) automatically with
+exponential backoff and jitter. You can control the number of attempts:
+
+```python
+# Retry up to 5 times on transient errors
+terry.fetch(urls, "json", retries=5)
+
+# Disable retries
+terry.download(urls, paths, retries=1)
+```
+
 ## Configuration
 
-TinyRetriever can be configured through environment variables:
+TinyRetriever can be configured through environment variables and function parameters:
 
 - `MAX_CONCURRENT_CALLS`: Maximum number of concurrent requests (default: 10)
-- Default chunk size for downloads: 1MB
-- Default timeout: 5 minutes
+- Default chunk size for downloads: 1 MB
+- Default timeout: 2 minutes for fetch, 10 minutes for download
 - Default connections per host: 4
+- Default retry attempts: 3
 
 ## Contributing
 
