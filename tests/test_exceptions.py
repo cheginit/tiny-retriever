@@ -63,7 +63,7 @@ class TestServiceError:
         with aioresponses() as m:
             m.get("http://example.com/error", status=500)
             with pytest.raises(ServiceError):
-                fetch(["http://example.com/error"], "text")
+                fetch(["http://example.com/error"], "text", retries=1)
 
     def test_http_404(self):
         with aioresponses() as m:
@@ -75,13 +75,13 @@ class TestServiceError:
         with aioresponses() as m:
             m.get("http://example.com/fail", status=500)
             with pytest.raises(ServiceError, match=r"example\.com/fail"):
-                fetch("http://example.com/fail", "text")
+                fetch("http://example.com/fail", "text", retries=1)
 
     def test_download_http_error(self):
         with aioresponses() as m:
             m.get("http://example.com/file", status=503)
             with pytest.raises(ServiceError):
-                download("http://example.com/file", "test_dl_err.txt")
+                download("http://example.com/file", "test_dl_err.txt", retries=1)
 
 
 class TestExceptionClasses:

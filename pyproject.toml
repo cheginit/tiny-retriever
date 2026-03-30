@@ -167,7 +167,7 @@ skip = "__pycache__,_build,.mypy_cache,.git,./htmlcov,.pixi,pixi.lock,**.ipynb"
 ignore-words-list = "gage,gages"
 
 [tool.pyproject-fmt]
-expand_tables = [ "tool.pixi" ]
+expand_tables = [ "tool.git-cliff", "tool.pixi" ]
 
 [tool.pyright]
 pythonVersion = "3.10"
@@ -264,15 +264,15 @@ release = { cmd = "git tag -a {{ version }} -m {{ version }} && git push && git 
 channels = [ "conda-forge" ]
 platforms = [ "linux-64", "osx-64", "osx-arm64", "win-64" ]
 
-[tool.git-cliff]
-changelog.header = """
+[tool.git-cliff.changelog]
+header = """
 # Changelog
 
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 """
-changelog.body = """
+body = """
 {%- macro remote_url() -%}
   https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
 {%- endmacro -%}
@@ -306,7 +306,7 @@ changelog.body = """
 {%- endfor %}
 {% endif %}\n
 """
-changelog.footer = """
+footer = """
 {%- macro remote_url() -%}
   https://github.com/{{ remote.github.owner }}/{{ remote.github.repo }}
 {%- endmacro -%}
@@ -323,11 +323,13 @@ changelog.footer = """
 {% endif -%}
 {% endif -%}
 {% endfor %}"""
-changelog.trim = true
-git.conventional_commits = true
-git.filter_unconventional = true
-git.split_commits = false
-git.commit_parsers = [
+trim = true
+
+[tool.git-cliff.git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
   { message = "^perf", group = "Changed" },
@@ -340,8 +342,8 @@ git.commit_parsers = [
   { message = "^ci", skip = true },
   { message = "^build", skip = true },
 ]
-git.protect_breaking_commits = true
-git.filter_commits = false
-git.tag_pattern = "v[0-9].*"
-git.topo_order = false
-git.sort_commits = "oldest"
+protect_breaking_commits = true
+filter_commits = false
+tag_pattern = "v[0-9].*"
+topo_order = false
+sort_commits = "oldest"

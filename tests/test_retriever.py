@@ -124,7 +124,7 @@ class TestFetchErrorHandling:
         with aioresponses() as m:
             m.get("http://example.com/err", status=500)
             with pytest.raises(ServiceError, match=r"example\.com/err"):
-                fetch("http://example.com/err", "text")
+                fetch("http://example.com/err", "text", retries=1)
 
     def test_raise_status_true_on_404(self):
         from tiny_retriever.exceptions import ServiceError
@@ -137,7 +137,7 @@ class TestFetchErrorHandling:
     def test_raise_status_false_returns_none(self):
         with aioresponses() as m:
             m.get("http://example.com/err", status=500)
-            result = fetch("http://example.com/err", "text", raise_status=False)
+            result = fetch("http://example.com/err", "text", raise_status=False, retries=1)
             assert result is None
 
     def test_raise_status_false_list_returns_none_elements(self):
@@ -148,6 +148,7 @@ class TestFetchErrorHandling:
                 ["http://example.com/ok", "http://example.com/fail"],
                 "text",
                 raise_status=False,
+                retries=1,
             )
             assert result[0] == "ok"
             assert result[1] is None
@@ -161,7 +162,7 @@ class TestFetchErrorHandling:
                 exception=OSError("DNS resolution failed"),
             )
             with pytest.raises((ServiceError, OSError)):
-                fetch("http://nonexistent.invalid/api", "text")
+                fetch("http://nonexistent.invalid/api", "text", retries=1)
 
     def test_value_error_raises_service_error(self):
         from tiny_retriever.exceptions import ServiceError
@@ -236,13 +237,13 @@ class TestDownload:
             m.get("http://example.com/fail", status=500)
             fp = Path(tmp) / "fail.txt"
             with pytest.raises(ServiceError):
-                download("http://example.com/fail", fp)
+                download("http://example.com/fail", fp, retries=1)
 
     def test_error_no_raise(self):
         with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
             m.get("http://example.com/fail", status=500)
             fp = Path(tmp) / "fail.txt"
-            download("http://example.com/fail", fp, raise_status=False)
+            download("http://example.com/fail", fp, raise_status=False, retries=1)
             assert not fp.exists()
 
     def test_custom_chunk_size(self):
@@ -282,6 +283,179 @@ class TestDownload:
             fp = Path(tmp) / "out.bin"
             download("http://example.com/f", fp)
             assert fp.read_bytes() == b"data"
+
+
+class TestFetchRetry:
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch):
+        """Replace _backoff_sleep with a no-op to keep tests fast."""
+
+        async def _noop(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("tiny_retriever.tiny_retriever._backoff_sleep", _noop)
+
+    def test_succeeds_after_transient_500(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api", status=500)
+            m.get("http://example.com/api", body="ok")
+            result = fetch("http://example.com/api", "text", retries=2)
+            assert result == "ok"
+
+    def test_succeeds_after_transient_500_json(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api", status=500)
+            m.get("http://example.com/api", payload={"key": "value"})
+            result = fetch("http://example.com/api", "json", retries=2)
+            assert result == {"key": "value"}
+
+    def test_retries_exhausted_raises(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api", status=500)
+            m.get("http://example.com/api", status=500)
+            m.get("http://example.com/api", status=500)
+            with pytest.raises(ServiceError):
+                fetch("http://example.com/api", "text", retries=3)
+
+    def test_retries_exhausted_returns_none(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api", status=500)
+            m.get("http://example.com/api", status=500)
+            result = fetch("http://example.com/api", "text", raise_status=False, retries=2)
+            assert result is None
+
+    def test_non_retryable_404_fails_immediately(self):
+        """A 404 is not retryable so only one mock response is needed."""
+        with aioresponses() as m:
+            m.get("http://example.com/api", status=404)
+            with pytest.raises(ServiceError):
+                fetch("http://example.com/api", "text", retries=3)
+
+    def test_non_retryable_valueerror_fails_immediately(self):
+        """ValueError is not retryable so only one mock response is needed."""
+        with aioresponses() as m:
+            m.get("http://example.com/api", exception=ValueError("bad"))
+            with pytest.raises(ServiceError):
+                fetch("http://example.com/api", "text", retries=3)
+
+    def test_retryable_oserror_then_succeeds(self):
+        with aioresponses() as m:
+            m.get("http://example.com/api", exception=OSError("connection reset"))
+            m.get("http://example.com/api", body="ok")
+            result = fetch("http://example.com/api", "text", retries=2)
+            assert result == "ok"
+
+    def test_multiple_urls_retry_independently(self):
+        with aioresponses() as m:
+            m.get("http://example.com/a", status=500)
+            m.get("http://example.com/a", body="a_ok")
+            m.get("http://example.com/b", body="b_ok")
+            result = fetch(["http://example.com/a", "http://example.com/b"], "text", retries=2)
+            assert result == ["a_ok", "b_ok"]
+
+
+class TestDownloadRetry:
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch):
+        async def _noop(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("tiny_retriever.tiny_retriever._backoff_sleep", _noop)
+
+    def test_succeeds_after_transient_500(self):
+        content = b"hello world"
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", status=500)
+            m.get(
+                "http://example.com/f",
+                body=content,
+                headers={"Content-Length": str(len(content))},
+            )
+            fp = Path(tmp) / "out.bin"
+            download("http://example.com/f", fp, retries=2)
+            assert fp.read_bytes() == content
+
+    def test_partial_file_cleaned_on_retry(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", status=500)
+            m.get("http://example.com/f", status=500)
+            fp = Path(tmp) / "out.bin"
+            with pytest.raises(ServiceError):
+                download("http://example.com/f", fp, retries=2)
+            assert not fp.exists()
+
+    def test_partial_file_cleaned_no_raise(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", status=500)
+            m.get("http://example.com/f", status=500)
+            fp = Path(tmp) / "out.bin"
+            download("http://example.com/f", fp, raise_status=False, retries=2)
+            assert not fp.exists()
+
+    def test_non_retryable_404_fails_immediately(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            m.get("http://example.com/f", status=404)
+            fp = Path(tmp) / "out.bin"
+            with pytest.raises(ServiceError):
+                download("http://example.com/f", fp, retries=3)
+            assert not fp.exists()
+
+
+class TestBackoffSleep:
+    def test_backoff_sleeps_with_exponential_delay(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from tiny_retriever.tiny_retriever import _backoff_sleep
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock) as mock_sleep:
+            asyncio.run(_backoff_sleep(0, factor=1.0, maximum=30.0))
+            mock_sleep.assert_called_once()
+            delay = mock_sleep.call_args[0][0]
+            # factor=1.0, attempt=0: base = min(1.0 * 2^0, 30) = 1.0
+            # jitter adds uniform(0, 0.5), so delay in [1.0, 1.5)
+            assert 1.0 <= delay < 1.5
+
+    def test_backoff_respects_maximum(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from tiny_retriever.tiny_retriever import _backoff_sleep
+
+        with patch.object(asyncio, "sleep", new_callable=AsyncMock) as mock_sleep:
+            asyncio.run(_backoff_sleep(100, factor=1.0, maximum=2.0))
+            delay = mock_sleep.call_args[0][0]
+            # base capped at maximum=2.0, jitter adds uniform(0, 1.0)
+            assert 2.0 <= delay < 3.0
+
+
+class TestCheckDownloadsRetry:
+    @pytest.fixture(autouse=True)
+    def _no_backoff(self, monkeypatch):
+        async def _noop(*_args, **_kwargs):
+            pass
+
+        monkeypatch.setattr("tiny_retriever.tiny_retriever._backoff_sleep", _noop)
+
+    def test_succeeds_after_transient_error(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            content = b"valid"
+            fp = Path(tmp) / "file.bin"
+            fp.write_bytes(content)
+            m.get("http://example.com/f", status=500)
+            m.get("http://example.com/f", headers={"Content-Length": str(len(content))})
+            result = check_downloads("http://example.com/f", fp, retries=2)
+            assert result == {}
+
+    def test_returns_negative_after_retries_exhausted(self):
+        with aioresponses() as m, tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "file.bin"
+            fp.write_bytes(b"data")
+            m.get("http://example.com/f", status=500)
+            m.get("http://example.com/f", status=500)
+            # All retries fail so remote size is -1 (unknown), file treated as valid
+            result = check_downloads("http://example.com/f", fp, retries=2)
+            assert result == {}
 
 
 class TestCheckDownloads:
@@ -407,3 +581,21 @@ class TestUniqueFilename:
         )
         assert name.startswith("pfx_")
         assert name.endswith(".json")
+
+
+class TestJsonSerialize:
+    def test_uses_orjson_when_available(self):
+        import tiny_retriever.tiny_retriever as mod
+
+        assert mod.HAS_ORJSON is True
+        result = mod._json_serialize({"key": "value"})
+        assert isinstance(result, str)
+        assert '"key"' in result
+
+    def test_falls_back_to_json_dumps_without_orjson(self, monkeypatch):
+        import tiny_retriever.tiny_retriever as mod
+
+        monkeypatch.setattr(mod, "HAS_ORJSON", False)
+        result = mod._json_serialize({"key": "value"})
+        assert isinstance(result, str)
+        assert '"key"' in result
