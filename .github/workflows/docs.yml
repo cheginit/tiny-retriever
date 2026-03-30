@@ -48,5 +48,19 @@ jobs:
     - name: Deploy release docs (tagged version)
       if: startsWith(github.ref, 'refs/tags/v')
       run: |-
+        VERSION=$(git describe --tags --abbrev=0)
+        # Find the previous stable version before deploying
+        PREV=$(mike list --json 2>/dev/null | python3 -c "
+        import json, sys
+        versions = json.load(sys.stdin)
+        prev = [v['version'] for v in versions if 'stable' in v.get('aliases', [])]
+        print(prev[0] if prev else '')
+        " || true)
+        # Deploy new version with stable alias
         pixi r docs-release
-        mike set-default --push stable
+        mike retitle --push "$VERSION" "$VERSION (stable)"
+        # Remove (stable) label from previous version
+        if [ -n "$PREV" ] && [ "$PREV" != "$VERSION" ]; then
+          mike retitle --push "$PREV" "$PREV"
+        fi
+        mike set-default --push latest

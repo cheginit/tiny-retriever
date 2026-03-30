@@ -230,7 +230,7 @@ changelog-update = "git cliff -c pyproject.toml -o CHANGELOG.md"
 [tool.pixi.feature.docs.tasks]
 docs-build = "mkdocs build --strict"
 docs-serve = { cmd = "mkdocs serve", depends-on = [ "docs-build" ] }
-docs-deploy = "mike deploy --push latest"
+docs-deploy = "mike deploy --push --title latest latest"
 docs-release = "mike deploy --push --update-aliases $(git describe --tags --abbrev=0) stable"
 
 [tool.pixi.feature.lint.tasks]
