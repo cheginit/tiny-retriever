@@ -119,6 +119,7 @@ plugins:
       python:
         import:
         - https://docs.python.org/3/objects.inv
+        - https://docs.aiohttp.org/en/stable/objects.inv
         paths: [tiny_retriever]
         options:
           docstring_style: numpy

@@ -12,21 +12,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Add `check_downloads` function for validating existing downloaded files against remote
-  file sizes without re-downloading. Returns a dictionary of files whose local size does
-  not match the remote `Content-Length`.
+    file sizes without re-downloading. Returns a dictionary of files whose local size
+    does not match the remote `Content-Length`.
 
 ### Fixed
 
 - Fix `FileNotFoundError` in `download` when a downloaded file's size did not match the
-  remote `Content-Length`. The file was deleted before its size was read for the error
-  message.
+    remote `Content-Length`. The file was deleted before its size was read for the error
+    message.
 
 ## [0.2.0] - 2026-01-30
 
 ### Added
 
 - Add support for passing `ssl` parameter to the `fetch` and `download` functions to
-  allow customization of SSL context for HTTPS requests.
+    allow customization of SSL context for HTTPS requests.
 
 ### Changed
 
@@ -38,29 +38,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - Change the timeout from session to request level. This allows for more granular
-  control over the timeout for each request.
+    control over the timeout for each request.
 
 ## [0.1.2] - 2025-02-18
 
 ### Changed
 
 - More robust handling of starting and stopping threads by lazy generation of a
-  dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
-  avoid issues that might arise from using TinyRetriever with other libraries that also
-  use threads such as `shapely`.
+    dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
+    avoid issues that might arise from using TinyRetriever with other libraries that
+    also use threads such as `shapely`.
 
 ## [0.1.1] - 2025-02-12
 
 ### Added
 
 - Add support for passing single URL/key to both `fetch` and `download` functions. This
-  makes using the function easier when there's just one query to be made. The result is
-  returned as a single item too.
+    makes using the function easier when there's just one query to be made. The result
+    is returned as a single item too.
 
 ### Changed
 
 - Check the validity of the input `request_kwargs` in `fetch` function based on the
-  acceptable args for `aiohttp.ClientSession.request` method.
+    acceptable args for `aiohttp.ClientSession.request` method.
 
 ## [0.1.0] - 2025-02-11
 
