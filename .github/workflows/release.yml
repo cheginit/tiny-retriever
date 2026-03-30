@@ -17,25 +17,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
-    - name: Generate Changelog
-      run: |-
-        echo "# Release Notes" > ${{ github.workflow }}-CHANGELOG.md
-        PAT="^## "
-        L1=$(grep -n "$PAT" CHANGELOG.md | sed -n '2p' | cut -d ":" -f 1)
-        L2=$(grep -n "$PAT" CHANGELOG.md | sed -n '3p' | cut -d ":" -f 1)
-        if [ -z "$L2" ]; then
-            tail -n +$L1 CHANGELOG.md >> ${{ github.workflow }}-CHANGELOG.md
-        else
-            awk "NR > $L1 && NR < $((L2 - 1))" CHANGELOG.md >> ${{ github.workflow }}-CHANGELOG.md
-        fi
-    - name: Remove extra spaces
-      run: |-
-        sed -i 's/-   /- /g' ${{ github.workflow }}-CHANGELOG.md
-    - name: Github Release
+      with:
+        fetch-depth: 0
+
+    - name: Generate release notes with git-cliff
+      uses: orhun/git-cliff-action@v4
+      with:
+        args: -c pyproject.toml --latest --strip all
+      env:
+        OUTPUT: release-notes.md
+        GITHUB_REPO: ${{ github.repository }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        body_path: ${{ github.workflow }}-CHANGELOG.md
+        body_path: release-notes.md
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -59,13 +57,13 @@ jobs:
 
     steps:
     - name: Download packages built by build-and-inspect-python-package
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         name: Packages
         path: dist
 
     - name: Generate artifact attestation for sdist and wheel
-      uses: actions/attest-build-provenance@v3
+      uses: actions/attest-build-provenance@v4
       with:
         subject-path: dist
 
