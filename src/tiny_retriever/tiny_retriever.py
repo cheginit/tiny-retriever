@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import atexit
-import contextlib
 import hashlib
+import importlib.util
 import json
 import os
+import random
 from collections.abc import Iterable, Sequence
 from inspect import signature
 from pathlib import Path
@@ -23,6 +24,8 @@ from typing import (
 )
 
 import aiofiles
+import aiofiles.os
+import aiofiles.ospath
 from aiohttp import (
     ClientConnectorDNSError,
     ClientResponseError,
@@ -35,14 +38,17 @@ from yarl import URL
 
 from tiny_retriever.exceptions import InputTypeError, InputValueError, ServiceError
 
-try:
-    import orjson  # pyright: ignore[reportMissingImports]
+HAS_ORJSON = importlib.util.find_spec("orjson") is not None
 
-    def _json_serialize(obj: Any) -> str:
-        """Serialize an object to a JSON string using orjson."""
+
+def _json_serialize(obj: Any) -> str:
+    """Serialize an object to a JSON string, using orjson when available."""
+    if HAS_ORJSON:
+        import orjson
+
         return orjson.dumps(obj).decode()
-except ImportError:
-    _json_serialize = json.dumps
+    return json.dumps(obj)
+
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -62,6 +68,104 @@ MAX_CONCURRENT_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "10"))
 CHUNK_SIZE = 1024 * 1024  # Default chunk size (1 MB)
 MAX_HOSTS = 4  # Maximum connections to a single host (rate-limited service)
 TIMEOUT = 2 * 60  # Per-request timeout for in seconds (2 minutes)
+MAX_RETRIES = 3  # Default number of retry attempts
+
+
+_HANDLED_EXCEPTIONS = (
+    ClientResponseError,
+    ClientConnectorDNSError,
+    OSError,
+    UnicodeDecodeError,
+    ValueError,
+)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Check if an exception is transient and worth retrying."""
+    if isinstance(exc, ClientResponseError) and exc.status >= 500:
+        return True
+    return isinstance(exc, (ClientConnectorDNSError, asyncio.TimeoutError, OSError))
+
+
+async def _backoff_sleep(attempt: int, factor: float = 0.5, maximum: float = 30.0) -> None:
+    """Sleep with exponential backoff and jitter."""
+    timeout = min(factor * (2.0**attempt), maximum)
+    timeout += random.uniform(0, timeout * 0.5)  # noqa: S311
+    await asyncio.sleep(timeout)
+
+
+async def _try_once(coro: Coroutine[Any, Any, T]) -> tuple[T, None] | tuple[None, Exception]:
+    """Execute a coroutine once, returning ``(result, None)`` on success or ``(None, exc)`` on handled failure."""
+    try:
+        return await coro, None
+    except _HANDLED_EXCEPTIONS as ex:
+        return None, ex
+
+
+async def _get_filesize_once(
+    session: ClientSession,
+    url: StrOrURL,
+    timeout: ClientTimeout,
+) -> int:
+    """Single attempt to get remote file size from Content-Length header."""
+    async with session.get(url, timeout=timeout) as response:
+        return int(response.headers.get("Content-Length", -1))
+
+
+async def _stream_file_once(
+    session: ClientSession,
+    url: StrOrURL,
+    filepath: Path,
+    chunk_size: int,
+    timeout: ClientTimeout,
+) -> None:
+    """Single attempt to stream a response to a file.
+
+    Validation strategy:
+    - When ``Content-Length`` is provided by the server, the local file
+      size is compared against it **both** before downloading (skip
+      check) and after (integrity check).
+    - Bytes written are tracked during streaming so the integrity check
+      does not depend on filesystem flush timing.
+    - When ``Content-Length`` is absent the download is accepted as-is
+      because no server-side reference is available.
+    """
+    async with session.get(url, timeout=timeout) as response:
+        remote_size = int(response.headers.get("Content-Length", -1))
+        if remote_size > 0 and await aiofiles.ospath.exists(filepath):
+            stat = await aiofiles.os.stat(filepath)
+            if stat.st_size == remote_size:
+                return
+
+        written = 0
+        async with aiofiles.open(filepath, "wb") as file:
+            async for chunk in response.content.iter_chunked(chunk_size):
+                await file.write(chunk)
+                written += len(chunk)
+        if remote_size > 0 and written != remote_size:
+            await aiofiles.os.unlink(filepath)
+            msg = f"Downloaded file size does not match expected size ({written} != {remote_size})"
+            raise ServiceError(
+                msg,
+                str(url),
+            )
+
+
+class _ResponseHandler(Protocol):
+    async def __call__(self, response: ClientResponse) -> ResponseT: ...
+
+
+async def _make_request_once(
+    session: ClientSession,
+    method: RequestMethod,
+    url: StrOrURL,
+    response_handler: _ResponseHandler,
+    timeout: float,
+    **kwargs: Any,
+) -> ResponseT:
+    """Single attempt to make an HTTP request and process the response."""
+    async with session.request(method, url, timeout=ClientTimeout(timeout), **kwargs) as response:
+        return await response_handler(response)
 
 
 class _AsyncLoopThread(Thread):
@@ -132,13 +236,17 @@ async def _get_filesize(
     session: ClientSession,
     url: StrOrURL,
     timeout: ClientTimeout,
+    retries: int,
 ) -> int:
-    """Stream the response to a file, skipping if already downloaded."""
-    with contextlib.suppress(
-        ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError
-    ):
-        async with session.get(url, timeout=timeout) as response:
-            return int(response.headers.get("Content-Length", -1))
+    """Get remote file size with retries."""
+    for attempt in range(retries):
+        result, error = await _try_once(_get_filesize_once(session, url, timeout))
+        if error is None:
+            return result  # type: ignore[return-value]
+        if attempt < retries - 1 and _is_retryable(error):
+            await _backoff_sleep(attempt)
+            continue
+        return -1
     return -1
 
 
@@ -147,6 +255,7 @@ async def _filesize_session(
     limit_per_host: int,
     timeout: float,
     ssl: bool | SSLContext,
+    retries: int,
 ) -> list[int]:
     """Download files concurrently."""
     client_timeout = ClientTimeout(
@@ -166,7 +275,10 @@ async def _filesize_session(
         trust_env=True,
         raise_for_status=True,
     ) as session:
-        tasks = [asyncio.create_task(_get_filesize(session, url, client_timeout)) for url in urls]
+        tasks = [
+            asyncio.create_task(_get_filesize(session, url, client_timeout, retries))
+            for url in urls
+        ]
         return await asyncio.gather(*tasks)
 
 
@@ -177,27 +289,24 @@ async def _stream_file(
     chunk_size: int,
     raise_status: bool,
     timeout: ClientTimeout,
+    retries: int,
 ) -> None:
-    """Stream the response to a file, skipping if already downloaded."""
-    try:
-        async with session.get(url, timeout=timeout) as response:
-            remote_size = int(response.headers.get("Content-Length", -1))
-            if filepath.exists() and filepath.stat().st_size == remote_size:
-                return
+    """Stream the response to a file with retries.
 
-            async with aiofiles.open(filepath, "wb") as file:
-                async for chunk in response.content.iter_chunked(chunk_size):
-                    await file.write(chunk)
-            local_size = filepath.stat().st_size
-            if remote_size > 0 and local_size != remote_size:
-                filepath.unlink(missing_ok=True)
-                raise ServiceError(
-                    f"Downloaded file size does not match expected size ({local_size} != {remote_size})",
-                    str(url),
-                )
-    except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
+    Partial files from failed attempts are removed before retrying.
+    """
+    for attempt in range(retries):
+        _, error = await _try_once(_stream_file_once(session, url, filepath, chunk_size, timeout))
+        if error is None:
+            return
+        if await aiofiles.ospath.exists(filepath):
+            await aiofiles.os.unlink(filepath)
+        if attempt < retries - 1 and _is_retryable(error):
+            await _backoff_sleep(attempt)
+            continue
         if raise_status:
-            raise ServiceError(str(ex), str(url)) from ex
+            raise ServiceError(str(error), str(url)) from error
+        return
 
 
 async def _download_session(
@@ -208,6 +317,7 @@ async def _download_session(
     ssl: bool | SSLContext,
     chunk_size: int,
     raise_status: bool,
+    retries: int,
 ) -> None:
     """Download files concurrently."""
     client_timeout = ClientTimeout(
@@ -229,7 +339,9 @@ async def _download_session(
     ) as session:
         tasks = [
             asyncio.create_task(
-                _stream_file(session, url, filepath, chunk_size, raise_status, client_timeout)
+                _stream_file(
+                    session, url, filepath, chunk_size, raise_status, client_timeout, retries
+                )
             )
             for url, filepath in zip(urls, files, strict=False)
         ]
@@ -245,6 +357,7 @@ def download(
     timeout: float = 600,
     ssl: bool | SSLContext = True,
     raise_status: bool = True,
+    retries: int = MAX_RETRIES,
 ) -> None:
     """Download multiple files concurrently by streaming their content to disk.
 
@@ -265,6 +378,8 @@ def download(
     raise_status : bool, optional
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
+    retries : int, optional
+        Number of retry attempts for transient errors, by default 3.
 
     Raises
     ------
@@ -277,13 +392,16 @@ def download(
     file_paths = [Path(filepath) for filepath in file_paths]
     urls = [urls] if isinstance(urls, (str, URL)) else list(urls)
     if len(urls) != len(file_paths):
-        raise InputTypeError("urls/files_paths", "lists of the same size")
+        msg = "urls/files_paths"
+        raise InputTypeError(msg, "lists of the same size")
 
     for parent_dir in {f.parent for f in file_paths}:
         parent_dir.mkdir(parents=True, exist_ok=True)
 
     _run_in_event_loop(
-        _download_session(urls, file_paths, limit_per_host, timeout, ssl, chunk_size, raise_status)
+        _download_session(
+            urls, file_paths, limit_per_host, timeout, ssl, chunk_size, raise_status, retries
+        )
     )
 
 
@@ -294,6 +412,7 @@ def check_downloads(
     limit_per_host: int = MAX_HOSTS,
     timeout: float = 600,
     ssl: bool | SSLContext = True,
+    retries: int = MAX_RETRIES,
 ) -> dict[Path, int]:
     """Check whether existing downloaded files match the remote file size.
 
@@ -319,6 +438,8 @@ def check_downloads(
         Request timeout in seconds, by default 10 minutes.
     ssl : bool or ssl.SSLContext, optional
         SSL configuration for the requests, by default True.
+    retries : int, optional
+        Number of retry attempts for transient errors, by default 3.
 
     Returns
     -------
@@ -336,7 +457,8 @@ def check_downloads(
     file_paths = [Path(fp) for fp in file_paths]
     urls = [urls] if isinstance(urls, (str, URL)) else list(urls)
     if len(urls) != len(file_paths):
-        raise InputTypeError("urls/files_paths", "lists of the same size")
+        msg = "urls/files_paths"
+        raise InputTypeError(msg, "lists of the same size")
 
     existing = [(i, fp) for i, fp in enumerate(file_paths) if fp.exists()]
     if not existing:
@@ -344,7 +466,7 @@ def check_downloads(
 
     existing_urls = [urls[i] for i, _ in existing]
     remote_sizes = _run_in_event_loop(
-        _filesize_session(existing_urls, limit_per_host, timeout, ssl)
+        _filesize_session(existing_urls, limit_per_host, timeout, ssl, retries)
     )
     return {
         fp: remote
@@ -385,13 +507,15 @@ def unique_filename(
     url_obj = URL(url)
 
     if params is not None and not isinstance(params, (dict, MultiDict)):
-        raise InputTypeError("params", "dict or multidict.MultiDict.")
+        msg = "params"
+        raise InputTypeError(msg, "dict or multidict.MultiDict.")
 
-    if data is not None and not isinstance(data, (dict, str)):
-        raise InputTypeError("data", "dict or str.")
+    if not isinstance(data, (dict, str, type(None))):  # pyright: ignore[reportUnnecessaryIsInstance]
+        msg = "data"
+        raise InputTypeError(msg, "dict or str.")
 
     if params:
-        params_obj = MultiDict(params)
+        params_obj = MultiDict(params)  # pyright: ignore[reportUnknownArgumentType]
         url_obj = url_obj.with_query(params_obj)
     params_str = str(url_obj.query or "")
 
@@ -408,10 +532,6 @@ def unique_filename(
     return f"{prefix_part}{hash_digest}{file_extension}"
 
 
-class _ResponseHandler(Protocol):
-    async def __call__(self, response: ClientResponse) -> ResponseT: ...
-
-
 async def _make_request(
     session: ClientSession,
     method: RequestMethod,
@@ -419,18 +539,23 @@ async def _make_request(
     response_handler: _ResponseHandler,
     raise_status: bool,
     timeout: float,
+    retries: int,
     **kwargs: Any,
 ) -> ResponseT | None:
-    """Make a single HTTP request with the specified method and handle the response."""
-    try:
-        async with session.request(
-            method, url, timeout=ClientTimeout(timeout), **kwargs
-        ) as response:
-            return await response_handler(response)
-    except (ClientResponseError, ClientConnectorDNSError, UnicodeDecodeError, ValueError) as ex:
+    """Make a single HTTP request with retries."""
+    for attempt in range(retries):
+        result, error = await _try_once(  # pyright: ignore[reportUnknownVariableType]
+            _make_request_once(session, method, url, response_handler, timeout, **kwargs)  # pyright: ignore[reportUnknownArgumentType]
+        )
+        if error is None:
+            return result  # pyright: ignore[reportUnknownVariableType]
+        if attempt < retries - 1 and _is_retryable(error):
+            await _backoff_sleep(attempt)
+            continue
         if raise_status:
-            raise ServiceError(str(ex), str(url)) from ex
+            raise ServiceError(str(error), str(url)) from error
         return None
+    return None
 
 
 @overload
@@ -443,6 +568,7 @@ async def _batch_request(
     ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: Literal[False],
+    retries: int = MAX_RETRIES,
 ) -> list[ResponseT | None]: ...
 
 
@@ -456,6 +582,7 @@ async def _batch_request(
     ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: Literal[True],
+    retries: int = MAX_RETRIES,
 ) -> list[ResponseT]: ...
 
 
@@ -468,6 +595,7 @@ async def _batch_request(
     ssl: bool | SSLContext,
     request_kwargs: list[dict[str, Any]] | None,
     raise_status: bool,
+    retries: int = MAX_RETRIES,
 ) -> list[ResponseT] | list[ResponseT | None]:
     """Execute multiple HTTP requests in parallel."""
     connector = TCPConnector(limit_per_host=limit_per_host, limit=MAX_CONCURRENT_CALLS, ssl=ssl)
@@ -482,7 +610,9 @@ async def _batch_request(
         if request_kwargs is None:
             tasks = [
                 asyncio.create_task(
-                    _make_request(session, method, url, response_handler, raise_status, timeout)
+                    _make_request(
+                        session, method, url, response_handler, raise_status, timeout, retries
+                    )
                 )
                 for url in urls
             ]
@@ -490,12 +620,19 @@ async def _batch_request(
             tasks = [
                 asyncio.create_task(
                     _make_request(
-                        session, method, url, response_handler, raise_status, timeout, **kwargs
+                        session,
+                        method,
+                        url,
+                        response_handler,
+                        raise_status,
+                        timeout,
+                        retries,
+                        **kwargs,
                     )
                 )
                 for url, kwargs in zip(urls, request_kwargs, strict=False)
             ]
-        return await asyncio.gather(*tasks)
+        return await asyncio.gather(*tasks)  # pyright: ignore[reportReturnType]
 
 
 def _check_url_kwargs(
@@ -504,23 +641,27 @@ def _check_url_kwargs(
 ) -> tuple[list[StrOrURL], list[dict[str, Any]] | None]:
     """Check the input types for URLs and request_kwargs."""
     urls = [urls] if isinstance(urls, (str, URL)) else urls
-    if not isinstance(urls, (Iterable, Sequence)):
-        raise InputTypeError("urls", "Iterable or Sequence")
+    if not isinstance(urls, (Iterable, Sequence)):  # pyright: ignore[reportUnnecessaryIsInstance]
+        msg = "urls"
+        raise InputTypeError(msg, "Iterable or Sequence")
 
     url_list = list(urls)
     if any(not isinstance(url, str) for url in url_list):
-        raise InputTypeError("urls", "list of str")
+        msg = "urls"
+        raise InputTypeError(msg, "list of str")
 
     if request_kwargs is None:
         kwargs_list = None
     elif isinstance(request_kwargs, dict) and all(isinstance(k, str) for k in request_kwargs):
         kwargs_list = cast("list[dict[str, Any]]", [request_kwargs])
-    elif isinstance(request_kwargs, Iterable) and all(isinstance(k, dict) for k in request_kwargs):
-        kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))
+    elif isinstance(request_kwargs, Iterable) and all(isinstance(k, dict) for k in request_kwargs):  # pyright: ignore[reportUnnecessaryIsInstance]
+        kwargs_list = cast("list[dict[str, Any]]", list(request_kwargs))  # pyright: ignore[reportUnknownArgumentType]
         if len(kwargs_list) != len(url_list):
-            raise InputTypeError("request_kwargs", "list of the same length as urls")
+            msg = "request_kwargs"
+            raise InputTypeError(msg, "list of the same length as urls")
     else:
-        raise InputTypeError("request_kwargs", "list of dict, dict, or None")
+        msg = "request_kwargs"
+        raise InputTypeError(msg, "list of dict, dict, or None")
     return url_list, kwargs_list
 
 
@@ -534,6 +675,7 @@ def fetch(
     timeout: float = TIMEOUT,
     ssl: bool | SSLContext = True,
     raise_status: bool = True,
+    retries: int = MAX_RETRIES,
 ) -> (
     str
     | None
@@ -569,6 +711,8 @@ def fetch(
         Raise an exception if a request fails, by default True.
         Otherwise, the exception is logged and the function continues.
         The queries that failed will return ``None``.
+    retries : int, optional
+        Number of retry attempts for transient errors, by default 3.
 
     Returns
     -------
@@ -588,16 +732,18 @@ def fetch(
         If the request fails or response cannot be processed when ``raise_status=True``
     """
     if request_method not in ("get", "post"):
-        raise InputValueError("request_method", ("get", "post"))
+        msg = "request_method"
+        raise InputValueError(msg, ("get", "post"))
 
-    handlers: dict[ReturnType, _ResponseHandler] = {
+    handlers: dict[ReturnType, _ResponseHandler] = {  # pyright: ignore[reportAssignmentType]
         "text": lambda r: r.text(),
         "json": lambda r: r.json(),
         "binary": lambda r: r.read(),
-    }  # pyright: ignore[reportAssignmentType]
+    }
 
     if return_type not in handlers:
-        raise InputValueError("return_type", tuple(handlers))
+        msg = "return_type"
+        raise InputValueError(msg, tuple(handlers))
 
     url_list, kwargs_list = _check_url_kwargs(urls, request_kwargs)
 
@@ -610,7 +756,7 @@ def fetch(
             raise InputValueError(invalids, list(valid_kwds.parameters))
 
     if raise_status:
-        resp = _run_in_event_loop(
+        resp: list[Any] = _run_in_event_loop(
             _batch_request(
                 url_list,
                 request_method,
@@ -620,6 +766,7 @@ def fetch(
                 ssl=ssl,
                 request_kwargs=kwargs_list,
                 raise_status=True,
+                retries=retries,
             )
         )
     else:
@@ -633,6 +780,7 @@ def fetch(
                 ssl=ssl,
                 request_kwargs=kwargs_list,
                 raise_status=False,
+                retries=retries,
             )
         )
     if isinstance(urls, (str, URL)):

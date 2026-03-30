@@ -5,6 +5,7 @@ from collections.abc import Iterable
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import Sequence
+    from ssl import SSLContext
     from aiohttp.typedefs import StrOrURL
 
     T = TypeVar("T")
@@ -18,9 +19,21 @@ def download(
     *,
     chunk_size: int = ...,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: bool = True,
+    retries: int = ...,
 ) -> None: ...
+
+def check_downloads(
+    urls: StrOrURL | Sequence[StrOrURL],
+    file_paths: Path | str | Sequence[Path | str],
+    *,
+    limit_per_host: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
+    retries: int = ...,
+) -> dict[Path, int]: ...
 
 def unique_filename(
     url: StrOrURL,
@@ -40,8 +53,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> str | None: ...
 
 @overload
@@ -52,8 +67,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> str: ...
 
 @overload
@@ -64,8 +81,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> dict[str, Any] | None: ...
 
 @overload
@@ -76,8 +95,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> dict[str, Any]: ...
 
 @overload
@@ -88,8 +109,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> bytes | None: ...
 
 @overload
@@ -100,8 +123,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: dict[str, Any] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> bytes: ...
 
 @overload
@@ -112,8 +137,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> list[str | None]: ...
 
 @overload
@@ -124,8 +151,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> list[str]: ...
 
 @overload
@@ -136,8 +165,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> list[dict[str, Any] | None]: ...
 
 @overload
@@ -148,8 +179,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> list[dict[str, Any]]: ...
 
 @overload
@@ -160,8 +193,10 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[False],
+    retries: int = ...,
 ) -> list[bytes | None]: ...
 
 @overload
@@ -172,6 +207,8 @@ def fetch(
     request_method: RequestMethod = "get",
     request_kwargs: Iterable[dict[str, Any]] | None = None,
     limit_per_host: int = ...,
-    timeout: int = ...,
+    timeout: float = ...,
+    ssl: bool | SSLContext = ...,
     raise_status: Literal[True] = True,
+    retries: int = ...,
 ) -> list[bytes]: ...
