@@ -1,67 +1,66 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
-this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project will be documented in this file. The format is based
+on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Add retry with exponential backoff for transient errors
 
 ## [0.2.1] - 2026-02-09
 
 ### Added
 
-- Add `check_downloads` function for validating existing downloaded files against remote
-    file sizes without re-downloading. Returns a dictionary of files whose local size
-    does not match the remote `Content-Length`.
-
-### Fixed
-
-- Fix `FileNotFoundError` in `download` when a downloaded file's size did not match the
-    remote `Content-Length`. The file was deleted before its size was read for the error
-    message.
+- Add a new function to check for corrupted download files.
 
 ## [0.2.0] - 2026-01-30
 
 ### Added
 
-- Add support for passing `ssl` parameter to the `fetch` and `download` functions to
-    allow customization of SSL context for HTTPS requests.
-
-### Changed
-
-- Dropped support for Python 3.9 due to EOl.
-- Use `aioresponses` library for testing.
+- Rewrite all tests using aioresponses.
+- Add support for toggling ssl verification.
 
 ## [0.1.3] - 2025-02-20
 
-### Changed
+### Added
 
-- Change the timeout from session to request level. This allows for more granular
-    control over the timeout for each request.
+- Change the timeout from session to request level.
 
 ## [0.1.2] - 2025-02-18
 
-### Changed
+### Fixed
 
-- More robust handling of starting and stopping threads by lazy generation of a
-    dedicated thread for the library and making `_AsyncLoopThread` a singleton. This can
-    avoid issues that might arise from using TinyRetriever with other libraries that
-    also use threads such as `shapely`.
+- Make \_AsyncLoopThread a singleton
+- More robust handling of thread starting/stopping to avoid issues with other threadsafe
+    libraries.
 
 ## [0.1.1] - 2025-02-12
 
 ### Added
 
-- Add support for passing single URL/key to both `fetch` and `download` functions. This
-    makes using the function easier when there's just one query to be made. The result
-    is returned as a single item too.
+- Check if the input query parameters that are apssed to aiohttp are valid
 
-### Changed
+## [0.1.0] - 2025-02-12
 
-- Check the validity of the input `request_kwargs` in `fetch` function based on the
-    acceptable args for `aiohttp.ClientSession.request` method.
+### Added
 
-## [0.1.0] - 2025-02-11
+- Add support for passing a single url/kwargs instead of a list.
 
-Initial release.
+### Fixed
+
+- If the input is a single url/kwargs return a response instead of list.
+
+### New Contributors
+
+- @ made their first contribution
+- @cheginit made their first contribution
+
+[0.1.1]: https://github.com/cheginit/tiny-retriever/compare/v0.1.0...v0.1.1
+[0.1.2]: https://github.com/cheginit/tiny-retriever/compare/v0.1.1...v0.1.2
+[0.1.3]: https://github.com/cheginit/tiny-retriever/compare/v0.1.2...v0.1.3
+[0.2.0]: https://github.com/cheginit/tiny-retriever/compare/v0.1.3...v0.2.0
+[0.2.1]: https://github.com/cheginit/tiny-retriever/compare/v0.2.0...v0.2.1
+[unreleased]: https://github.com/cheginit/tiny-retriever/compare/v0.2.1...HEAD
